@@ -7,7 +7,7 @@
 - [ ] Add MCP Python SDK dependency.
 - [ ] Add Pydantic dependency.
 - [ ] Add pytest and pytest-asyncio dependencies.
-- [ ] Add a dependency/configuration file for the project.
+- [ ] Add a dependency/configuration file.
 - [ ] Confirm the supplied data files are available to the application.
 
 ## Phase 2 — Data Layer
@@ -22,12 +22,13 @@
 
 ## Phase 3 — Caller Context and Site Scoping
 
-- [ ] Define the caller context with `caller_id` and `assigned_site`.
+- [ ] Define caller context with `caller_id` and `assigned_site`.
 - [ ] Restrict valid sites to `LEEDS-01`, `READING-02`, and `GLASGOW-03`.
 - [ ] Implement server-side site filtering.
-- [ ] Prevent a user-supplied site value from bypassing site authorization.
+- [ ] Prevent a user-supplied site value from bypassing authorization.
 - [ ] Return `SITE_ACCESS_DENIED` for cross-site requests.
-- [ ] Verify that valid same-site requests continue to work.
+- [ ] Verify valid same-site requests continue to work.
+- [ ] Verify that errors do not expose another site's data.
 
 ## Phase 4 — Stock Tools
 
@@ -38,6 +39,7 @@
 - [ ] Restrict lookup to the caller's assigned site.
 - [ ] Return valid zero-quantity records.
 - [ ] Return `NOT_FOUND` for an unknown SKU.
+- [ ] Ensure the tool is read-only.
 
 ### `search_stock`
 
@@ -48,6 +50,7 @@
 - [ ] Return one result when there is one clear match.
 - [ ] Return `NOT_FOUND` when no candidate exists.
 - [ ] Ensure the tool does not modify stock.
+- [ ] Verify that the search does not silently choose an unsafe best match.
 
 ## Phase 5 — Dock Tools
 
@@ -61,8 +64,9 @@
 
 ### `book_dock_slot`
 
-- [ ] Define the date, slot, carrier, and confirmation parameters.
+- [ ] Define date, slot, carrier, and confirmation parameters.
 - [ ] Validate that the requested slot exists.
+- [ ] Validate that the slot belongs to the caller's assigned site.
 - [ ] Validate that the slot is available.
 - [ ] Require explicit confirmation.
 - [ ] Return `CONFIRMATION_REQUIRED` when confirmation is missing.
@@ -71,8 +75,9 @@
 
 ### `cancel_dock_booking`
 
-- [ ] Define the date, slot, and confirmation parameters.
+- [ ] Define date, slot, and confirmation parameters.
 - [ ] Validate that the booking exists.
+- [ ] Validate site ownership.
 - [ ] Require explicit confirmation.
 - [ ] Return `CONFIRMATION_REQUIRED` when confirmation is missing.
 - [ ] Cancel the booking only after successful validation and confirmation.
@@ -96,6 +101,7 @@
 - [ ] Define SKU, source bin, destination bin, quantity, and confirmation parameters.
 - [ ] Require a positive movement quantity.
 - [ ] Validate the source bin.
+- [ ] Validate the destination bin.
 - [ ] Validate that source and destination bins differ.
 - [ ] Validate that enough stock is available.
 - [ ] Require explicit confirmation.
@@ -144,15 +150,29 @@
 ## Phase 9 — MCP Server
 
 - [ ] Create the MCP server entry point.
-- [ ] Register all tools defined in `spec.md`.
+- [ ] Register all nine tools defined in `spec.md`.
 - [ ] Add model-facing tool descriptions.
 - [ ] Add typed input schemas.
 - [ ] Connect each tool to the data/service layer.
 - [ ] Ensure read-only tools do not perform state changes.
 - [ ] Ensure state-changing tools enforce confirmation.
 - [ ] Ensure all tools enforce caller site scope.
+- [ ] Ensure MCP errors follow the common error structure.
 
-## Phase 10 — Automated Tests
+## Phase 10 — Claude Agent Instructions
+
+- [ ] Create `AGENT_INSTRUCTIONS.md`.
+- [ ] Document when Claude should use `get_stock`.
+- [ ] Document when Claude should use `search_stock`.
+- [ ] Document ambiguous-search behaviour.
+- [ ] Document that Claude must not guess warehouse facts.
+- [ ] Document confirmation requirements for state-changing tools.
+- [ ] Document site-boundary behaviour.
+- [ ] Document how Claude should respond to actionable errors.
+- [ ] Document that MCP-server enforcement remains the security boundary.
+- [ ] Keep instructions concise and focused on tool usage.
+
+## Phase 11 — Automated Tests
 
 - [ ] Configure `pytest-asyncio`.
 - [ ] Test normal tool invocation.
@@ -176,25 +196,26 @@
 - [ ] Test common error response shape.
 - [ ] Run the complete test suite and capture the passing output.
 
-## Phase 11 — Agent Runtime Demonstration
+## Phase 12 — Claude Code Runtime Demonstration
 
-- [ ] Choose a real MCP-compatible agent host.
+- [ ] Configure Claude Code as the MCP agent host.
 - [ ] Register the MCP server.
-- [ ] Verify that the agent can discover the tools.
+- [ ] Verify that Claude can discover all tools.
 - [ ] Run an exact stock lookup using an Ops-style question.
 - [ ] Run an unambiguous product-name lookup.
 - [ ] Run an ambiguous product-name lookup.
-- [ ] Verify that the agent asks a clarification question instead of guessing.
+- [ ] Verify that Claude asks a clarification question instead of guessing.
 - [ ] Run a dock availability request.
 - [ ] Run a state-changing request without confirmation.
-- [ ] Verify that confirmation is requested.
-- [ ] Confirm the operation and verify the state change.
+- [ ] Verify that the operation is not executed without confirmation.
+- [ ] Confirm the operation.
+- [ ] Verify the resulting state change.
 - [ ] Run a cross-site request.
 - [ ] Verify that access is denied by the toolkit.
 - [ ] Run an invalid request.
-- [ ] Verify that the agent receives an actionable error.
+- [ ] Verify that Claude receives an actionable error.
 
-## Phase 12 — Documentation and Evidence
+## Phase 13 — Documentation and Evidence
 
 - [ ] Document the changes made from the original Ops wish-list.
 - [ ] Document the reason for splitting the requested tools.
@@ -202,22 +223,25 @@
 - [ ] Document the confirmation approach.
 - [ ] Document the site-scoping approach.
 - [ ] Document the actionable error approach.
-- [ ] Save the MCP registration configuration.
+- [ ] Document the role of `AGENT_INSTRUCTIONS.md`.
+- [ ] Explain why critical rules are enforced in the MCP server rather than only in agent instructions.
+- [ ] Save the Claude Code MCP registration configuration.
 - [ ] Save the runtime transcript.
 - [ ] Save the passing test output.
 - [ ] Create `REFLECTION.md`.
 - [ ] Add the declared-effort statement.
 - [ ] Review the repository against the submission checklist.
 
-## Phase 13 — Git History
+## Phase 14 — Git History
 
 - [ ] Commit `spec.md` as `01-spec`.
 - [ ] Verify that `01-spec` contains no source files.
 - [ ] Commit `plan.md` as `02-plan`.
 - [ ] Commit `tasks.md` as `03-tasks`.
 - [ ] Commit the implementation as `04-implement`.
+- [ ] Add `AGENT_INSTRUCTIONS.md` as part of the implementation.
 - [ ] Verify that no source file appears before `04-implement`.
-- [ ] Make any required follow-up commits after `04-implement`.
+- [ ] Make required follow-up commits after `04-implement`.
 - [ ] Verify the first four commits are in the required order.
 - [ ] Verify commit timestamps are distinct and increasing.
 - [ ] Verify `git log --stat` provides evidence of the required sequence.
@@ -236,8 +260,13 @@
 - [ ] Unambiguous searches do not require unnecessary clarification.
 - [ ] State-changing operations require confirmation.
 - [ ] Errors are structured and actionable.
+- [ ] `AGENT_INSTRUCTIONS.md` is implemented.
+- [ ] Claude Code can discover and use the MCP server.
+- [ ] Claude demonstrates appropriate tool selection.
+- [ ] Claude asks for clarification when required.
+- [ ] Claude does not execute state changes without confirmation.
+- [ ] Cross-site access is rejected by the toolkit.
 - [ ] `pytest-asyncio` tests pass.
-- [ ] Runtime agent demonstration is complete.
-- [ ] Clarification behaviour is demonstrated.
+- [ ] Runtime demonstration is complete.
 - [ ] Required documentation and evidence are included.
 - [ ] Required Git commit sequence is preserved.

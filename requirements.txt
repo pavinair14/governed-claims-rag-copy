@@ -1,0 +1,4 @@
+mcp
+pydantic
+pytest
+pytest-asyncio
