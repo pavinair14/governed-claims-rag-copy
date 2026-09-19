@@ -270,3 +270,16 @@
 - [ ] Runtime demonstration is complete.
 - [ ] Required documentation and evidence are included.
 - [ ] Required Git commit sequence is preserved.
+
+## Phase 15 — Contract Audit Before Submission
+
+- [ ] Verify `spec.md` is complete and no tool definition ends mid-section.
+- [ ] Verify each tool schema uses typed fields, `additionalProperties: false`, and enums or constants for closed values.
+- [ ] Verify write schemas require `confirmation: true`; verify the server checks confirmation again.
+- [ ] Verify public tool inputs do not include `site`; construct trusted `CallerContext` at the host/server boundary.
+- [ ] Verify every mutation is visible to a subsequent read in the same server session.
+- [ ] Verify exception IDs are generated and exception ownership/state are persisted and enforced.
+- [ ] Verify `SKU-8809` returns a valid zero-quantity record and broad pallet-wrap search returns both Leeds candidates.
+- [ ] Verify the MCP host discovers all nine tools and the saved transcript includes clarification, confirmation, same-site access, cross-site refusal, and actionable error recovery.
+- [ ] Verify `.claude/CLAUDE.md` and `.claude/instructions/AGENT_INSTRUCTIONS.md` are present and agree with `spec.md`.
+- [ ] Verify `git log --stat` shows the required first four commits in order, with no source file before `04-implement`.

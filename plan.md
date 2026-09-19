@@ -272,3 +272,34 @@ The implementation is complete when:
 - Runtime evidence is captured.
 - Required documentation and reflection are included.
 - The required Git commit sequence is preserved.
+
+## 6. Requirement Traceability and Implementation Gates
+
+The supplied data is part of the design evidence, not just test input. Before implementation is accepted, record these observations:
+
+- `SKU-8801` and `SKU-8802` are both pallet wrap variants at Leeds, so a broad "pallet wrap" request is ambiguous.
+- `SKU-8803` and `SKU-8804` are distinct strapping-band sizes, so description search must return candidates rather than a fuzzy winner.
+- `SKU-8809` exists with quantity `0`, so zero stock must be reported as a valid record rather than `NOT_FOUND`.
+- Dock records contain both available and booked slots at each site, so booking must validate current state and cannot overwrite an existing booking.
+- Stock corrections affect the month-end count according to the Ops brief; therefore they are confirmed writes, separate from physical bin movements.
+
+The implementation is complete only when these gates pass:
+
+1. `spec.md` is the frozen contract: all nine tools have typed parameters, model-facing descriptions, closed sets, response rules, and error behavior.
+2. A real MCP entry point registers the nine tools and injects trusted `CallerContext`; no public tool accepts `site` as an authorization parameter.
+3. The state layer persists changes for the lifetime of the server session and exposes them to subsequent reads; no tool reports success before applying its mutation.
+4. Schema validation runs before business logic, while business errors use the common actionable error shape.
+5. Tests prove both same-site success and cross-site refusal, ambiguous and unambiguous lookup behavior, zero stock, confirmation refusal, successful confirmation, invalid enums, already-booked slots, insufficient stock, and exception lifecycle rules.
+6. The MCP host transcript demonstrates discovery, tool selection, clarification, confirmation, and correction from an actionable error. Store the registration/configuration and test output as repository evidence.
+7. `.claude/CLAUDE.md` contains the project workflow and safety rules; `.claude/instructions/AGENT_INSTRUCTIONS.md` contains the model-facing tool-use guidance. Neither replaces server enforcement.
+
+## 7. Known Gaps to Close Before `04-implement`
+
+The current service modules are useful building blocks, but they are not by themselves a registered MCP server. The implementation phase must still add or verify:
+
+- an MCP server entry point and tool registration
+- Pydantic/MCP schemas matching `spec.md`, including `confirmation: true`
+- durable in-session mutation for corrections, movements, bookings, cancellations, and exceptions
+- server-generated exception IDs and site-scoped exception persistence
+- an MCP-host registration file and runtime transcript
+- focused async tests for the contract and evidence listed above

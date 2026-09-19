@@ -139,6 +139,19 @@ The toolkit exposes nine tools.
 sku: string
 ```
 
+**Schema:**
+
+```json
+{
+	"type": "object",
+	"required": ["sku"],
+	"properties": {
+		"sku": {"type": "string", "minLength": 1}
+	},
+	"additionalProperties": false
+}
+```
+
 **Model-facing description:**
 
 > Retrieve stock information for an exact SKU at the caller's assigned warehouse site. Use this tool when the user provides a specific SKU. Do not use it for approximate product-name searches.
@@ -163,6 +176,19 @@ sku: string
 
 ```text
 query: string
+```
+
+**Schema:**
+
+```json
+{
+	"type": "object",
+	"required": ["query"],
+	"properties": {
+		"query": {"type": "string", "minLength": 1}
+	},
+	"additionalProperties": false
+}
 ```
 
 **Model-facing description:**
@@ -207,4 +233,233 @@ status: "available" | "booked" | "all"
 
 **Model-facing description:**
 
-> List dock s
+> List dock slots for the caller's assigned site on a date. Use this read-only tool to inspect availability before booking or cancelling. The site is taken from trusted caller context; never ask the caller to supply it.
+
+**Schema:**
+
+```json
+{
+	"type": "object",
+	"required": ["date"],
+	"properties": {
+		"date": {"type": "string", "format": "date"},
+		"status": {"type": "string", "enum": ["available", "booked", "all"], "default": "all"}
+	},
+	"additionalProperties": false
+}
+```
+
+**Result:** `ok: true`, the trusted site, ISO date, matching slots, and `slot_count`.
+
+---
+
+### 4.4 `book_dock_slot`
+
+**Purpose:** Book one currently available dock slot.
+
+**Operation type:** State-changing; explicit confirmation required.
+
+**Parameters:**
+
+```text
+date: date
+slot: string (HH:MM)
+carrier: non-empty string
+confirmation: literal true
+```
+
+**Model-facing description:**
+
+> Book one available dock slot for the caller's assigned site. Use only after the user has confirmed the exact date, time, and carrier. This changes the dock schedule. The site is taken from trusted caller context.
+
+**Schema:**
+
+```json
+{
+	"type": "object",
+	"required": ["date", "slot", "carrier", "confirmation"],
+	"properties": {
+		"date": {"type": "string", "format": "date"},
+		"slot": {"type": "string", "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"},
+		"carrier": {"type": "string", "minLength": 1},
+		"confirmation": {"const": true}
+	},
+	"additionalProperties": false
+}
+```
+
+The server checks that the slot exists at the assigned site and is available before updating it. An already-booked slot returns `SLOT_ALREADY_BOOKED`.
+
+---
+
+### 4.5 `cancel_dock_booking`
+
+**Purpose:** Cancel one existing dock booking.
+
+**Operation type:** State-changing; explicit confirmation required.
+
+**Parameters:** `date: date`, `slot: string (HH:MM)`, `confirmation: literal true`.
+
+**Model-facing description:**
+
+> Cancel an existing dock booking for the caller's assigned site. Use only after the user has confirmed the exact date and time. This changes the dock schedule. The site is taken from trusted caller context.
+
+The schema is an object with required `date`, `slot`, and `confirmation`, the same date and slot constraints as `book_dock_slot`, and `confirmation` constrained to `true`. The server makes the slot available only after all validation succeeds.
+
+---
+
+### 4.6 `correct_stock`
+
+**Purpose:** Replace the recorded quantity after a physical count correction.
+
+**Operation type:** State-changing and ledger-affecting; explicit confirmation required.
+
+**Parameters:**
+
+```text
+sku: non-empty string
+corrected_quantity: integer >= 0
+reason: non-empty string
+confirmation: literal true
+```
+
+**Model-facing description:**
+
+> Correct the recorded quantity for an exact SKU at the caller's assigned site after a physical count. This affects month-end stock records, so require confirmation of the SKU, new quantity, and reason. Do not use it to represent a bin movement.
+
+The schema requires these four fields, rejects additional fields, constrains `corrected_quantity` to a non-negative integer, and constrains `confirmation` to `true`. The server verifies that the SKU belongs to the assigned site before applying the correction.
+
+---
+
+### 4.7 `move_stock`
+
+**Purpose:** Record a physical movement between two bins at the assigned site.
+
+**Operation type:** State-changing; explicit confirmation required.
+
+**Parameters:**
+
+```text
+sku: non-empty string
+from_bin: non-empty string
+to_bin: non-empty string
+quantity: integer > 0
+confirmation: literal true
+```
+
+**Model-facing description:**
+
+> Record a physical movement of an exact SKU between two different bins at the caller's assigned site. Confirm the SKU, source bin, destination bin, and quantity first. Do not move more than the source bin contains.
+
+The schema uses non-empty strings, `quantity` minimum `1`, and `confirmation: true`. The server verifies site ownership, distinct bins, source existence, and available quantity before applying the movement.
+
+---
+
+### 4.8 `raise_exception`
+
+**Purpose:** Create a damaged or missing stock exception.
+
+**Operation type:** State-changing operational record; explicit confirmation required.
+
+**Parameters:**
+
+```text
+category: "damaged" | "missing"
+description: non-empty string
+sku: non-empty string | null (optional)
+confirmation: literal true
+```
+
+**Model-facing description:**
+
+> Raise a damaged or missing stock exception at the caller's assigned site. Use only after the user confirms the category and description, and validate an optional SKU against that site. Do not invent an exception or SKU.
+
+The category is a closed enum and `confirmation` is constrained to `true`. If `sku` is supplied, it must belong to the assigned site. The result includes a server-generated exception ID.
+
+---
+
+### 4.9 `close_exception`
+
+**Purpose:** Close an existing exception with a resolution note.
+
+**Operation type:** State-changing operational record; explicit confirmation required.
+
+**Parameters:**
+
+```text
+exception_id: non-empty string
+resolution_note: non-empty string
+confirmation: literal true
+```
+
+**Model-facing description:**
+
+> Close an open exception belonging to the caller's assigned site. Require confirmation of the exception ID and resolution note. Do not close an unknown or already-closed exception.
+
+The schema requires the three fields, rejects empty strings and additional fields, and constrains `confirmation` to `true`. The server checks existence, site ownership, and open status before closing it; a second close returns `ALREADY_CLOSED`.
+
+---
+
+## 5. Common Response and Error Contract
+
+Every tool returns a JSON object. Successful calls contain `"ok": true` and an operation-specific result. Failed calls contain exactly this actionable shape:
+
+```json
+{
+	"ok": false,
+	"error": {
+		"code": "MACHINE_READABLE_CODE",
+		"message": "What failed and why, in plain language.",
+		"field": "field_name or null",
+		"details": {},
+		"suggested_action": "The next corrective action for the agent."
+	}
+}
+```
+
+The minimum codes are:
+
+- `INVALID_ARGUMENT`: value or required business input is invalid; include the field and allowed values or constraints.
+- `NOT_FOUND`: the requested SKU, slot, or exception is not available within the caller's scope.
+- `SITE_ACCESS_DENIED`: an identified record belongs to another site; do not reveal that site's quantity, bin, carrier, or schedule details.
+- `CONFIRMATION_REQUIRED`: no state change occurred; return the exact proposed action so the agent can ask for confirmation.
+- `SLOT_ALREADY_BOOKED`: booking was not changed; choose another available slot.
+- `INSUFFICIENT_STOCK`: movement was not applied; include available and requested quantities.
+- `ALREADY_CLOSED`: the exception was not changed; do not retry closure.
+
+Schema validation may reject a call before the tool runs. It must still identify the invalid field and permitted shape where the MCP host exposes validation errors.
+
+## 6. Safety and State Rules
+
+1. Trusted caller context, not a tool argument, supplies `caller_id` and `assigned_site`.
+2. Every stock, dock, and exception read or write is filtered by `assigned_site` inside the server.
+3. Read-only tools never mutate state.
+4. No state-changing operation occurs unless the request passes schema validation, business validation, and explicit confirmation.
+5. Confirmation is for the specific proposed operation; a previous confirmation cannot be reused for a different operation.
+6. State changes are applied atomically after validation. The in-memory test backend must make the result visible to a subsequent read in the same server session.
+7. The server must not claim a change succeeded until the state layer has applied it.
+8. Ambiguous description searches return all plausible candidates. The agent asks a focused clarification question rather than selecting a best match.
+
+## 7. Decisions Against the Ops Wish-list
+
+- The requested `lookup` is split into `get_stock` and `search_stock` because exact SKU lookup and uncertain description search need different safety behavior. The stock file contains near-identical variants such as clear and black pallet wrap.
+- The requested `check_dock` is split into `list_dock_slots`, `book_dock_slot`, and `cancel_dock_booking` so inspection cannot accidentally be treated as a write.
+- The requested `stock_change` is split into `correct_stock` and `move_stock` because a count correction affects the month-end record while a movement changes bin location and available stock.
+- All writes require confirmation because dock bookings, stock corrections, movements, and exception records are operational state, and the requirements explicitly note that stock corrections feed month-end count.
+- Site is deliberately absent from every public tool parameter. The data contains three sites and the requirements describe staff as site-assigned; accepting a user-controlled site would make the access boundary advisory.
+- Search returns candidates instead of one fuzzy winner because the supplied descriptions contain meaningful variants and the requirements explicitly make uncertainty the toolkit's responsibility.
+
+## 8. Runtime and Evidence Requirements
+
+The implementation must register all nine tools in a real MCP server and exercise them through an MCP-compatible host. Evidence must include:
+
+- tool discovery and selection by the host
+- one unambiguous lookup answered without unnecessary clarification
+- one ambiguous lookup followed by a clarification question
+- confirmation refusal followed by a confirmed state change
+- same-site success and cross-site refusal
+- schema rejection and an actionable business error
+- passing `pytest-asyncio` output
+- the host registration/configuration used for the demonstration
+
+The first four Git commits must be distinct and ordered as `01-spec`, `02-plan`, `03-tasks`, and `04-implement`; no source file may appear before `04-implement`.
