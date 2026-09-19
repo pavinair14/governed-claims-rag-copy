@@ -5,24 +5,7 @@ from typing import Any
 from .context import CallerContext
 from .data_store import WarehouseDataStore
 
-
-def _error(
-    code: str,
-    message: str,
-    field: str | None = None,
-    details: dict[str, Any] | None = None,
-    suggested_action: str = "",
-) -> dict[str, Any]:
-    return {
-        "ok": False,
-        "error": {
-            "code": code,
-            "message": message,
-            "field": field,
-            "details": details or {},
-            "suggested_action": suggested_action,
-        },
-    }
+from .errors import make_error
 
 
 def correct_stock(
@@ -36,7 +19,7 @@ def correct_stock(
     """Correct the recorded quantity for a SKU."""
 
     if not confirmation:
-        return _error(
+        return make_error(
             code="CONFIRMATION_REQUIRED",
             message=(
                 f"Correcting stock for '{sku}' requires confirmation."
@@ -53,7 +36,7 @@ def correct_stock(
         )
 
     if corrected_quantity < 0:
-        return _error(
+        return make_error(
             code="INVALID_ARGUMENT",
             message="Corrected quantity cannot be negative.",
             field="corrected_quantity",
@@ -63,7 +46,7 @@ def correct_stock(
         )
 
     if not reason.strip():
-        return _error(
+        return make_error(
             code="INVALID_ARGUMENT",
             message="A reason is required for a stock correction.",
             field="reason",
@@ -82,7 +65,7 @@ def correct_stock(
     ]
 
     if not matches:
-        return _error(
+        return make_error(
             code="NOT_FOUND",
             message=(
                 f"SKU '{sku}' was not found at "
@@ -123,7 +106,7 @@ def move_stock(
     """Move stock between bins after explicit confirmation."""
 
     if not confirmation:
-        return _error(
+        return make_error(
             code="CONFIRMATION_REQUIRED",
             message=(
                 f"Moving stock for '{sku}' requires confirmation."
@@ -141,7 +124,7 @@ def move_stock(
         )
 
     if quantity <= 0:
-        return _error(
+        return make_error(
             code="INVALID_ARGUMENT",
             message="Move quantity must be greater than zero.",
             field="quantity",
@@ -151,7 +134,7 @@ def move_stock(
         )
 
     if not from_bin.strip():
-        return _error(
+        return make_error(
             code="INVALID_ARGUMENT",
             message="Source bin cannot be empty.",
             field="from_bin",
@@ -161,7 +144,7 @@ def move_stock(
         )
 
     if not to_bin.strip():
-        return _error(
+        return make_error(
             code="INVALID_ARGUMENT",
             message="Destination bin cannot be empty.",
             field="to_bin",
@@ -171,7 +154,7 @@ def move_stock(
         )
 
     if from_bin.strip() == to_bin.strip():
-        return _error(
+        return make_error(
             code="INVALID_ARGUMENT",
             message="Source and destination bins must be different.",
             field="to_bin",
@@ -191,7 +174,7 @@ def move_stock(
     ]
 
     if not matches:
-        return _error(
+        return make_error(
             code="NOT_FOUND",
             message=(
                 f"SKU '{sku}' was not found in bin "
@@ -207,7 +190,7 @@ def move_stock(
     available_quantity = int(record["quantity"])
 
     if quantity > available_quantity:
-        return _error(
+        return make_error(
             code="INSUFFICIENT_STOCK",
             message=(
                 f"Cannot move {quantity} {record['unit']} of "

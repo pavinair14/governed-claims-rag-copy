@@ -6,6 +6,8 @@ from typing import Any
 from .context import CallerContext
 from .data_store import WarehouseDataStore
 
+from .errors import make_error
+
 
 VALID_DOCK_STATUSES = {
     "available",
@@ -13,24 +15,6 @@ VALID_DOCK_STATUSES = {
     "all",
 }
 
-
-def _error(
-    code: str,
-    message: str,
-    field: str | None = None,
-    details: dict[str, Any] | None = None,
-    suggested_action: str = "",
-) -> dict[str, Any]:
-    return {
-        "ok": False,
-        "error": {
-            "code": code,
-            "message": message,
-            "field": field,
-            "details": details or {},
-            "suggested_action": suggested_action,
-        },
-    }
 
 
 def list_dock_slots(
@@ -42,7 +26,7 @@ def list_dock_slots(
     """List dock slots for the caller's assigned site."""
 
     if status not in VALID_DOCK_STATUSES:
-        return _error(
+        return make_error(
             code="INVALID_ARGUMENT",
             message=f"Invalid dock status '{status}'.",
             field="status",
@@ -84,7 +68,7 @@ def book_dock_slot(
     """Book an available dock slot after explicit confirmation."""
 
     if not confirmation:
-        return _error(
+        return make_error(
             code="CONFIRMATION_REQUIRED",
             message=(
                 f"Booking dock slot {slot} on "
@@ -103,7 +87,7 @@ def book_dock_slot(
         )
 
     if not carrier.strip():
-        return _error(
+        return make_error(
             code="INVALID_ARGUMENT",
             message="Carrier cannot be empty.",
             field="carrier",
@@ -121,7 +105,7 @@ def book_dock_slot(
     ]
 
     if not matches:
-        return _error(
+        return make_error(
             code="NOT_FOUND",
             message=(
                 f"No dock slot '{slot}' exists for "
@@ -137,7 +121,7 @@ def book_dock_slot(
     record = matches[0]
 
     if record["status"] == "booked":
-        return _error(
+        return make_error(
             code="SLOT_ALREADY_BOOKED",
             message=(
                 f"Dock slot '{slot}' on "
@@ -177,7 +161,7 @@ def cancel_dock_booking(
     """Cancel an existing dock booking after explicit confirmation."""
 
     if not confirmation:
-        return _error(
+        return make_error(
             code="CONFIRMATION_REQUIRED",
             message=(
                 f"Cancelling dock slot {slot} on "
@@ -205,7 +189,7 @@ def cancel_dock_booking(
     ]
 
     if not matches:
-        return _error(
+        return make_error(
             code="NOT_FOUND",
             message=(
                 f"No dock slot '{slot}' exists for "
@@ -221,7 +205,7 @@ def cancel_dock_booking(
     record = matches[0]
 
     if record["status"] == "available":
-        return _error(
+        return make_error(
             code="NOT_FOUND",
             message=(
                 f"Dock slot '{slot}' is not currently booked."
