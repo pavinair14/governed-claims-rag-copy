@@ -5,30 +5,13 @@ from typing import Any
 from .context import CallerContext
 from .data_store import WarehouseDataStore
 
+from .errors import make_error
+
 
 VALID_EXCEPTION_CATEGORIES = {
     "damaged",
     "missing",
 }
-
-
-def _error(
-    code: str,
-    message: str,
-    field: str | None = None,
-    details: dict[str, Any] | None = None,
-    suggested_action: str = "",
-) -> dict[str, Any]:
-    return {
-        "ok": False,
-        "error": {
-            "code": code,
-            "message": message,
-            "field": field,
-            "details": details or {},
-            "suggested_action": suggested_action,
-        },
-    }
 
 
 def raise_exception(
@@ -42,7 +25,7 @@ def raise_exception(
     """Create a warehouse exception after explicit confirmation."""
 
     if category not in VALID_EXCEPTION_CATEGORIES:
-        return _error(
+        return make_error(
             code="INVALID_ARGUMENT",
             message=f"Invalid exception category '{category}'.",
             field="category",
@@ -55,7 +38,7 @@ def raise_exception(
         )
 
     if not description.strip():
-        return _error(
+        return make_error(
             code="INVALID_ARGUMENT",
             message="Exception description cannot be empty.",
             field="description",
@@ -65,7 +48,7 @@ def raise_exception(
         )
 
     if not confirmation:
-        return _error(
+        return make_error(
             code="CONFIRMATION_REQUIRED",
             message="Raising an exception requires confirmation.",
             field="confirmation",
@@ -88,7 +71,7 @@ def raise_exception(
         ]
 
         if not matches:
-            return _error(
+            return make_error(
                 code="NOT_FOUND",
                 message=(
                     f"SKU '{sku}' was not found at "
@@ -129,7 +112,7 @@ def close_exception(
     """Close an existing exception after explicit confirmation."""
 
     if not exception_id.strip():
-        return _error(
+        return make_error(
             code="INVALID_ARGUMENT",
             message="Exception ID cannot be empty.",
             field="exception_id",
@@ -139,7 +122,7 @@ def close_exception(
         )
 
     if not resolution_note.strip():
-        return _error(
+        return make_error(
             code="INVALID_ARGUMENT",
             message="Resolution note cannot be empty.",
             field="resolution_note",
@@ -149,7 +132,7 @@ def close_exception(
         )
 
     if not confirmation:
-        return _error(
+        return make_error(
             code="CONFIRMATION_REQUIRED",
             message=(
                 f"Closing exception '{exception_id}' "
