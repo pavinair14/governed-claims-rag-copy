@@ -8,6 +8,8 @@ from .data_store import WarehouseDataStore
 
 from .errors import make_error
 
+from .state import WarehouseState
+
 
 VALID_DOCK_STATUSES = {
     "available",
@@ -18,7 +20,7 @@ VALID_DOCK_STATUSES = {
 
 
 def list_dock_slots(
-    store: WarehouseDataStore,
+    store: WarehouseState,
     context: CallerContext,
     requested_date: date,
     status: str = "all",
@@ -58,7 +60,7 @@ def list_dock_slots(
 
 
 def book_dock_slot(
-    store: WarehouseDataStore,
+    store: WarehouseState,
     context: CallerContext,
     requested_date: date,
     slot: str,
@@ -152,7 +154,7 @@ def book_dock_slot(
 
 
 def cancel_dock_booking(
-    store: WarehouseDataStore,
+    store: WarehouseState,
     context: CallerContext,
     requested_date: date,
     slot: str,

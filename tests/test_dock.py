@@ -13,8 +13,13 @@ from warehouse_mcp.dock import (
 ROOT = Path(__file__).resolve().parents[1]
 
 store = WarehouseDataStore(
-    stock_file=ROOT / "data" / "stock_snapshot.csv",
-    dock_file=ROOT / "data" / "dock_schedule.jsonl",
+    "data/stock_snapshot.csv",
+    "data/dock_schedule.jsonl",
+)
+
+state = WarehouseState(
+    store.load_stock(),
+    store.load_dock_schedule(),
 )
 
 
@@ -25,7 +30,7 @@ def test_list_available_leeds_slots():
     )
 
     result = list_dock_slots(
-        store,
+        state,
         context,
         date(2026, 4, 8),
         "available",
@@ -42,7 +47,7 @@ def test_list_booked_leeds_slots():
     )
 
     result = list_dock_slots(
-        store,
+        state,
         context,
         date(2026, 4, 8),
         "booked",
@@ -59,7 +64,7 @@ def test_invalid_status_is_rejected():
     )
 
     result = list_dock_slots(
-        store,
+        state,
         context,
         date(2026, 4, 8),
         "free",
@@ -76,7 +81,7 @@ def test_booking_requires_confirmation():
     )
 
     result = book_dock_slot(
-        store,
+        state,
         context,
         date(2026, 4, 8),
         "10:00",
@@ -95,7 +100,7 @@ def test_booking_already_booked_slot():
     )
 
     result = book_dock_slot(
-        store,
+        state,
         context,
         date(2026, 4, 8),
         "08:00",
@@ -114,7 +119,7 @@ def test_booking_available_slot():
     )
 
     result = book_dock_slot(
-        store,
+        state,
         context,
         date(2026, 4, 8),
         "10:00",
@@ -134,7 +139,7 @@ def test_cancellation_requires_confirmation():
     )
 
     result = cancel_dock_booking(
-        store,
+        state,
         context,
         date(2026, 4, 8),
         "08:00",
@@ -152,7 +157,7 @@ def test_cancel_booked_slot():
     )
 
     result = cancel_dock_booking(
-        store,
+        state,
         context,
         date(2026, 4, 8),
         "08:00",

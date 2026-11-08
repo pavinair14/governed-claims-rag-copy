@@ -1,163 +1,157 @@
-# Warehouse Ops MCP Toolkit Tasks
+# Warehouse Ops MCP Toolkit — Tasks
 
-## Phase 1 — Project Setup
+Task numbers follow the phases in `plan.md`. `§` references point to `spec.md`.
+Tasks tagged **[test]** produce a passing pytest-asyncio test as their completion evidence.
 
-- [ ] Create the Python project structure.
-- [ ] Create the Python 3.11 environment.
-- [ ] Add MCP Python SDK dependency.
-- [ ] Add Pydantic dependency.
-- [ ] Add pytest and pytest-asyncio dependencies.
-- [ ] Add a dependency/configuration file.
-- [ ] Confirm the supplied data files are available to the application.
+## 1. Project setup
 
-## Phase 2 — Data Layer
+- [ ] 1.1 Create the repository layout from `plan.md` §3 (source only in `04-implement`).
+- [ ] 1.2 Create a Python 3.11 environment; `pyproject.toml` with `mcp`, `pydantic`, `pytest`, `pytest-asyncio`.
+- [ ] 1.3 Configure `pytest-asyncio` (`asyncio_mode = "auto"` or explicit markers).
+- [ ] 1.4 Copy `stock_snapshot.csv` and `dock_schedule.jsonl` into `data/`; confirm the loader finds them (16 stock rows, 18 dock rows).
 
-- [ ] Implement loading of `stock_snapshot.csv`.
-- [ ] Implement loading of `dock_schedule.jsonl`.
-- [ ] Create functions for retrieving stock records.
-- [ ] Create functions for searching stock descriptions.
-- [ ] Create functions for reading dock slots.
-- [ ] Add an in-memory representation for state changes where required.
-- [ ] Keep the data layer independent from MCP tool definitions.
+## 2. Errors and envelope (§7.2–7.4)
 
-## Phase 3 — Caller Context and Site Scoping
+- [ ] 2.1 Define the closed error-code set: `INVALID_ARGUMENT`, `NOT_FOUND`, `SITE_ACCESS_DENIED`, `CONFIRMATION_REQUIRED`, `INVALID_CONFIRMATION`, `SLOT_ALREADY_BOOKED`, `INSUFFICIENT_STOCK`, `STALE_QUANTITY`, `ALREADY_CLOSED`.
+- [ ] 2.2 Implement the error object: `code`, `message`, `field`, `details`, `suggested_action`, `example_call`.
+- [ ] 2.3 Implement success/failure envelopes (`ok`, `site`, `data` / `error`; `isError` on failures).
+- [ ] 2.4 `example_call` builder that uses `"<ask the user>"` for values only the user can supply.
+- [ ] 2.5 **[test]** Every error code produces all required fields.
 
-- [ ] Define caller context with `caller_id` and `assigned_site`.
-- [ ] Restrict valid sites to `LEEDS-01`, `READING-02`, and `GLASGOW-03`.
-- [ ] Implement server-side site filtering.
-- [ ] Prevent a user-supplied site value from bypassing authorization.
-- [ ] Return `SITE_ACCESS_DENIED` for cross-site requests.
-- [ ] Verify valid same-site requests continue to work.
-- [ ] Verify that errors do not expose another site's data.
+## 3. Session context and scope (§5)
 
-## Phase 4 — Stock Tools
+- [ ] 3.1 Read `KESTREL_CALLER_ID` and `KESTREL_ASSIGNED_SITE` at startup; fail fast if missing or not in the closed set.
+- [ ] 3.2 **[test]** Startup fails on missing/invalid site.
+- [ ] 3.3 Implement the single `scope` helper: row filtering by session site, foreign-record detection, `site` assertion check.
+- [ ] 3.4 `SITE_ACCESS_DENIED` builder that returns only the submitted value and the session site — no foreign description, quantity or bin.
+- [ ] 3.5 Echo `site` in every success result.
 
-### `get_stock`
+## 4. Models and schemas (§7.5, §8)
 
-- [ ] Define the `sku` parameter schema.
-- [ ] Implement exact SKU lookup.
-- [ ] Restrict lookup to the caller's assigned site.
-- [ ] Return valid zero-quantity records.
-- [ ] Return `NOT_FOUND` for an unknown SKU.
-- [ ] Ensure the tool is read-only.
+- [ ] 4.1 **Spike:** with the installed MCP SDK, confirm how validation failures surface; pick the approach that lets the toolkit return its own `INVALID_ARGUMENT` object while still publishing the full JSON Schema.
+- [ ] 4.2 Shared types: `SKU`, `BIN`, `EXID`, `DATE`, `SLOT` enum (six values), `Site` enum, `DockStatus` enum, `ExceptionCategory` enum (`damaged`, `missing`), `ExceptionStatusFilter` enum.
+- [ ] 4.3 One Pydantic input model per tool with `extra="forbid"`, ranges (`quantity` ≥ 1; `counted_quantity` 0–100000), string lengths, and the common optional `site` field.
+- [ ] 4.4 Map `ValidationError` → `INVALID_ARGUMENT` with `field` and `details.allowed_values`.
+- [ ] 4.5 Special hints: SKU-like text passed to `search_stock` → point to `get_stock`; description-like text passed to `get_stock` → point to `search_stock`; `"8801"` → suggest `"SKU-8801"`.
+- [ ] 4.6 **[test]** Schema rejection: bad SKU pattern, slot `"10am"`, category `"broken"`, quantity 0 and −5, missing required field, extra property (`site_id`), `status` value outside the enum.
+- [ ] 4.7 **[test]** `list_tools` exposes enums, patterns and ranges in each `inputSchema`.
 
-### `search_stock`
+## 5. Store and ledger (§2, §6)
 
-- [ ] Define the `query` parameter schema.
-- [ ] Implement product-description search.
-- [ ] Restrict search to the caller's assigned site.
-- [ ] Return all plausible candidates for ambiguous searches.
-- [ ] Return one result when there is one clear match.
-- [ ] Return `NOT_FOUND` when no candidate exists.
-- [ ] Ensure the tool does not modify stock.
-- [ ] Verify that the search does not silently choose an unsafe best match.
+- [ ] 5.1 Load stock rows keyed by (SKU, bin) and dock slots keyed by (site, date, slot); keep loading independent of MCP.
+- [ ] 5.2 Reset function for tests (fresh state per test).
+- [ ] 5.3 Exception store starting empty; ID generator `EX-0001…`.
+- [ ] 5.4 Append-only audit ledger (`audit_id`, caller, site, tool, arguments, before/after, UTC time).
+- [ ] 5.5 Site bin zones derived from the snapshot (`A-`/`YARD-`, `B-`, `C-`).
+- [ ] 5.6 Operating date pinned to `2026-04-08`, overridable by config for tests.
 
-## Phase 5 — Dock Tools
+## 6. Search (§9)
 
-### `list_dock_slots`
+- [ ] 6.1 Tokeniser: lower-case, split on whitespace/punctuation, keep `500mm`/`100x150` whole.
+- [ ] 6.2 Matcher: alphabetic prefix (min 3 chars, plural `s` ignored); numeric exact or unit-less; AND across tokens.
+- [ ] 6.3 Site filter applied **before** matching; zero-stock products never filtered.
+- [ ] 6.4 Resolution: `unique` (with stock details) / `multiple` (identity only, no quantities, `next_step` text) / `NOT_FOUND`.
+- [ ] 6.5 **[test]** Every row of the §9 outcome table, at the correct session site.
+- [ ] 6.6 **[test]** `multiple` responses contain no `quantity`, `total_quantity` or `locations` keys.
+- [ ] 6.7 **[test]** Unambiguous queries never return `multiple` (`void fill` at Leeds and Glasgow, `edge board`, `label`, `black pallet wrap`, `50mm corner protector`).
 
-- [ ] Define the `date` parameter.
-- [ ] Define the `status` enum.
-- [ ] Implement `available`, `booked`, and `all` filtering.
-- [ ] Restrict results to the caller's assigned site.
-- [ ] Keep the operation read-only.
+## 7. Read tools (§8.1–8.3, 8.9)
 
-### `book_dock_slot`
+- [ ] 7.1 `get_stock`: exact SKU, total + per-bin locations, `in_stock`; zero quantity is success.
+- [ ] 7.2 `search_stock` wired to §6.
+- [ ] 7.3 `list_dock_slots`: `date` optional (default operating date, echoed), `status` enum default `all`, `counts`, `NOT_FOUND` with `details.available_dates`.
+- [ ] 7.4 `list_exceptions`: `status` enum default `open`, optional `sku`, newest first, empty list is success.
+- [ ] 7.5 **[test]** Each read tool succeeds for a valid same-site call, at all three sites.
+- [ ] 7.6 **[test]** `get_stock("SKU-8809")` at Glasgow → success, quantity 0, `in_stock: false`.
+- [ ] 7.7 **[test]** Read tools do not change state (state snapshot equal before/after).
 
-- [ ] Define date, slot, carrier, and confirmation parameters.
-- [ ] Validate that the requested slot exists.
-- [ ] Validate that the slot belongs to the caller's assigned site.
-- [ ] Validate that the slot is available.
-- [ ] Require explicit confirmation.
-- [ ] Return `CONFIRMATION_REQUIRED` when confirmation is missing.
-- [ ] Return `SLOT_ALREADY_BOOKED` when the slot is already booked.
-- [ ] Update the stub schedule only after successful validation and confirmation.
+## 8. Confirmation (§6)
 
-### `cancel_dock_booking`
+- [ ] 8.1 Tier 1: missing/false `confirm` → `CONFIRMATION_REQUIRED` with `details.preview`; nothing changed.
+- [ ] 8.2 Tier 2: token store — random, single-use, TTL 300 s, bound to caller + tool + canonical arguments.
+- [ ] 8.3 Order of checks: schema → scope → existence/state → confirmation; **never issue a preview for a call that would fail**; re-validate at execution.
+- [ ] 8.4 `INVALID_CONFIRMATION` for expired, reused, foreign-caller and changed-argument tokens, with instructions to restart.
+- [ ] 8.5 **[test]** Tier 1 preview leaves state unchanged; `confirm=true` executes.
+- [ ] 8.6 **[test]** Tier 2: no token → preview + token, state unchanged; correct token → executes; each invalid-token case → `INVALID_CONFIRMATION` and state unchanged.
+- [ ] 8.7 **[test]** A failing call (e.g. booked slot, stale quantity) returns its own error, not a preview.
 
-- [ ] Define date, slot, and confirmation parameters.
-- [ ] Validate that the booking exists.
-- [ ] Validate site ownership.
-- [ ] Require explicit confirmation.
-- [ ] Return `CONFIRMATION_REQUIRED` when confirmation is missing.
-- [ ] Cancel the booking only after successful validation and confirmation.
-- [ ] Make the cancelled slot available again.
+## 9. Write tools (§8.4–8.8, 8.10)
 
-## Phase 6 — Stock Change Tools
+- [ ] 9.1 `book_dock_slot`: validate date exists, slot free; `SLOT_ALREADY_BOOKED` with `details.available_slots` and `example_call`; tier 1.
+- [ ] 9.2 `cancel_dock_booking`: by date + slot; preview names the carrier; `NOT_FOUND` if the slot has no booking (message states actual status); slot returns to `available`; tier 2.
+- [ ] 9.3 `correct_stock`: SKU, bin, `counted_quantity`, `expected_current_quantity`, `reason`; `STALE_QUANTITY` with `details.current_quantity`; bin must hold SKU (`details.bins_holding_sku`); ledger records before/after/reason; tier 2.
+- [ ] 9.4 `move_stock`: SKU, `from_bin`, `to_bin`, `quantity`; `INSUFFICIENT_STOCK` with `details.available_in_bin`; same-bin → `INVALID_ARGUMENT`; `to_bin` outside site zones → `INVALID_ARGUMENT` with `details.valid_bin_prefixes`; total unchanged; empty source bin removed unless it is the SKU's only row; tier 1.
+- [ ] 9.5 `raise_exception`: `category` enum, SKU required and site-checked, description 5–500; returns `exception_id`; tier 1.
+- [ ] 9.6 `close_exception`: exception exists and belongs to site; resolution note required; `ALREADY_CLOSED` with `closed_at` and prior note; tier 2; no reopen.
+- [ ] 9.7 Every executed write appends exactly one audit entry; previews and failures append none.
+- [ ] 9.8 **[test]** Booking a booked slot; booking a free slot (Leeds 10:00) with `confirm`; cancelling Leeds 12:00 through the two-step path; cancel on an available slot → `NOT_FOUND`.
+- [ ] 9.9 **[test]** Correction happy path (8802: 180 → 176); wrong `expected_current_quantity` → `STALE_QUANTITY`; ledger entry has before, after, reason.
+- [ ] 9.10 **[test]** Move happy path (total preserved); insufficient stock; same bin; `to_bin` `B-03-7` from a Leeds session rejected.
+- [ ] 9.11 **[test]** Raise → list → close → close again (`ALREADY_CLOSED`); invalid category rejected; SKU from another site → `SITE_ACCESS_DENIED`.
 
-### `correct_stock`
+## 10. Site-scoping tests (§5)
 
-- [ ] Define the SKU parameter.
-- [ ] Define `corrected_quantity` as a non-negative integer.
-- [ ] Require a correction reason.
-- [ ] Require explicit confirmation.
-- [ ] Validate that the SKU belongs to the caller's assigned site.
-- [ ] Return `CONFIRMATION_REQUIRED` before an unconfirmed change.
-- [ ] Prevent negative quantities.
-- [ ] Apply the correction only after confirmation.
+- [ ] 10.1 **[test]** Parametrise over all three session sites: own-site SKU works on `get_stock`.
+- [ ] 10.2 **[test]** Another site's SKU → `SITE_ACCESS_DENIED` on `get_stock`, `correct_stock`, `move_stock`, `raise_exception`.
+- [ ] 10.3 **[test]** `site=<other site>` on **every** tool → `SITE_ACCESS_DENIED`; `site=<own site>` accepted.
+- [ ] 10.4 **[test]** Denied responses, serialised, contain none of the foreign SKU's description, quantity or bin.
+- [ ] 10.5 **[test]** Dock tools at Leeds never return Reading/Glasgow rows for the same slot time; results echo `site`.
+- [ ] 10.6 **[test]** `search_stock` for another site's product → `NOT_FOUND`, no leakage.
+- [ ] 10.7 **[test]** Exception records raised in one session are not returned or closable from a session at another site.
+- [ ] 10.8 **[test]** Unknown `site` value (`"YORK-04"`) → `INVALID_ARGUMENT` listing the three valid sites.
 
-### `move_stock`
+## 11. MCP server (§7.1, §8)
 
-- [ ] Define SKU, source bin, destination bin, quantity, and confirmation parameters.
-- [ ] Require a positive movement quantity.
-- [ ] Validate the source bin.
-- [ ] Validate the destination bin.
-- [ ] Validate that source and destination bins differ.
-- [ ] Validate that enough stock is available.
-- [ ] Require explicit confirmation.
-- [ ] Return `INSUFFICIENT_STOCK` when the requested quantity is too high.
-- [ ] Apply the movement only after confirmation.
+- [ ] 11.1 stdio entry point registering all 10 tools with the verbatim model-facing descriptions from `spec.md` §8.
+- [ ] 11.2 Annotations: reads `readOnlyHint: true`; writes `readOnlyHint: false`; `destructiveHint: true` for `correct_stock`, `cancel_dock_booking`, `close_exception`; `false` for the other three writes; `openWorldHint: false`.
+- [ ] 11.3 Description prefixes `[READ-ONLY]` / `[CHANGES STATE — …]` match annotations.
+- [ ] 11.4 Server-level `instructions`: identify-before-read, never guess, ask when `multiple`, confirm before writes, `SITE_ACCESS_DENIED` is final.
+- [ ] 11.5 **[test]** Tool count is 10; annotations and prefixes are consistent for each tool.
+- [ ] 11.6 **[test]** Error results carry `isError: true` and the structured object.
+- [ ] 11.7 Run the complete suite; save passing output to `evidence/pytest_output.txt`.
 
-## Phase 7 — Exception Tools
+## 12. Claude Code integration (§11)
 
-### `raise_exception`
+- [ ] 12.1 `.mcp.json`: stdio command, args, and `env` with `KESTREL_CALLER_ID` and `KESTREL_ASSIGNED_SITE=LEEDS-01`.
+- [ ] 12.2 `.claude/settings.json`: allow the four read-only tools; leave the six write tools to prompt.
+- [ ] 12.3 `AGENT_INSTRUCTIONS.md`: update to the final tool set (add `list_exceptions`, `confirm` vs `confirmation_token`, `STALE_QUANTITY`, `INVALID_CONFIRMATION`, the optional `site` assertion, no-quantities-in-multiple).
+- [ ] 12.4 `CLAUDE.md` importing `AGENT_INSTRUCTIONS.md`, used **only** for the second demo run.
+- [ ] 12.5 Capture the `/mcp` output showing the server connected with all 10 tools listed.
 
-- [ ] Define the exception category enum.
-- [ ] Allow only `damaged` and `missing`.
-- [ ] Require a description.
-- [ ] Allow an optional related SKU.
-- [ ] Validate the SKU against the caller's assigned site when supplied.
-- [ ] Require explicit confirmation.
-- [ ] Associate the exception with the caller's assigned site.
+## 13. Runtime demonstration (`plan.md` §7)
 
-### `close_exception`
+- [ ] 13.1 **Bare run** (no `CLAUDE.md`, no instructions): scenarios 1–17.
+- [ ] 13.2 **Run with instructions**: same scenarios.
+- [ ] 13.3 Scenario 3 — ambiguous "pallet wrap": agent asks which; does not pick.
+- [ ] 13.4 Scenario 2 — "void fill": agent answers directly with no clarification.
+- [ ] 13.5 Scenarios 6, 8, 9 — agent shows the preview and waits for an explicit yes; no write before it.
+- [ ] 13.6 Scenario 12/13 — cross-site refused by the toolkit; agent quotes no other-site figures.
+- [ ] 13.7 Scenario 14 is completed through to a raised exception so scenario 15 has a ticket to close.
+- [ ] 13.8 Scenarios 16–17 — invalid enum corrected from the error; zero-stock reported as success.
+- [ ] 13.9 Any behaviour seen only in run 2 → fix in descriptions/results and re-run bare.
+- [ ] 13.10 Save both transcripts and the registration config under `evidence/`.
 
-- [ ] Define the exception ID parameter.
-- [ ] Require a resolution note.
-- [ ] Require explicit confirmation.
-- [ ] Validate that the exception exists.
-- [ ] Validate that the exception belongs to the caller's assigned site.
-- [ ] Prevent an already-closed exception from being closed again.
-- [ ] Return `ALREADY_CLOSED` when appropriate.
+## 14. Documentation and evidence
 
-## Phase 8 — Error Handling
+- [ ] 14.1 List of changes from the Ops request with reasoning (from `spec.md` §3), as a standalone section or file for submission.
+- [ ] 14.2 Document why critical rules live in the server (schemas, scope, tokens) rather than only in instructions.
+- [ ] 14.3 Write `REFLECTION.md`: what changed and why, what the data forced, what would fail without the changes, what was not built, open questions for Ops.
+- [ ] 14.4 Add the declared-effort statement.
+- [ ] 14.5 Prepare short answers for submission-time questions: the 12/16 same-site-sibling figure; why `void fill` is unique at two sites; which three tools are irreversible and why; why `site` is an assertion; why quantities are withheld from `multiple`; why there is no reopen.
+- [ ] 14.6 Review the repository against `criteria_checklist.md`, item by item.
 
-- [ ] Define the common error response structure.
-- [ ] Implement machine-readable error codes.
-- [ ] Include a clear human/model-readable message.
-- [ ] Include the relevant field when applicable.
-- [ ] Include useful details where required.
-- [ ] Include a suggested corrective action.
-- [ ] Ensure errors do not expose data from another site.
-- [ ] Test invalid arguments.
-- [ ] Test `NOT_FOUND`.
-- [ ] Test `SITE_ACCESS_DENIED`.
-- [ ] Test `CONFIRMATION_REQUIRED`.
-- [ ] Test `SLOT_ALREADY_BOOKED`.
-- [ ] Test `INSUFFICIENT_STOCK`.
-- [ ] Test `ALREADY_CLOSED`.
+## 15. Git history
 
-## Phase 9 — MCP Server
+- [ ] 15.1 Finish `spec.md`, `plan.md`, `tasks.md` before any commit.
+- [ ] 15.2 Initialise the repo; commit only `spec.md` as `01-spec`.
+- [ ] 15.3 Verify `git show --stat 01-spec` lists only `spec.md` and no source files exist.
+- [ ] 15.4 Commit only `plan.md` as `02-plan`.
+- [ ] 15.5 Commit only `tasks.md` as `03-tasks`.
+- [ ] 15.6 Commit implementation, data, tests, config and `AGENT_INSTRUCTIONS.md` as `04-implement`.
+- [ ] 15.7 Follow-up commits (fixes, evidence, `REFLECTION.md`, any documented spec amendment) come after `04-implement`.
+- [ ] 15.8 Verify order and timestamps: `git log --reverse --stat --format="%h %ad %s"`; save to `evidence/`.
 
-- [ ] Create the MCP server entry point.
-- [ ] Register all nine tools defined in `spec.md`.
-- [ ] Add model-facing tool descriptions.
-- [ ] Add typed input schemas.
-- [ ] Connect each tool to the data/service layer.
-- [ ] Ensure read-only tools do not perform state changes.
-- [ ] Ensure state-changing tools enforce confirmation.
-- [ ] Ensure all tools enforce caller site scope.
-- [ ] Ensure MCP errors follow the common error structure.
+## Final definition of done
 
 ## Phase 10 — Claude Agent Instructions
 

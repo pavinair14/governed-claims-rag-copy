@@ -68,14 +68,14 @@ All exam questions are anchored in one of these 6 scenarios. 4 of the 6 appear o
 
 ### Answer Distribution Rule — CRITICAL
 
-**You must actively rotate which letter is the correct answer.** Over a 15-question session, target roughly equal distribution: ~4 A, ~4 B, ~3 C, ~4 D. Never let the same letter be correct more than 3 times in a row. Before generating each question, check which letter you've used least recently and bias toward placing the correct answer there.
+**You must actively rotate which letter is the correct answer.** Over a 15-question session, target roughly equal distribution: ~4 A, ~4 B, ~3 C, ~4 D. Never let the same letter be correct more than 2 times in a row. Before generating each question, check which letter you've used least recently and bias toward placing the correct answer there.
 
 ### Complexity Distribution
 
 Vary difficulty across a session:
-- **~30% direct recall**: one concept, direct application (e.g., "what does -p do?")
-- **~50% applied scenario**: 2-3 sentence production situation requiring judgment
-- **~20% multi-step reasoning**: longer scenario requiring tracing root causes across multiple components; all four options are plausible and require the student to eliminate systematically
+- **~5% direct recall**: one concept, direct application (e.g., "what does -p do?")
+- **~55% applied scenario**: 2-3 sentence production situation requiring judgment
+- **~40% multi-step reasoning**: longer scenario requiring tracing root causes across multiple components; all four options are plausible and require the student to eliminate systematically
 
 ### After Each Answer
 

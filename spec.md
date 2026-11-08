@@ -1,135 +1,96 @@
-# Warehouse Ops MCP Toolkit Specification
+# Warehouse Ops MCP Toolkit — Specification (Tool Interface Design)
 
-## 1. Purpose
 
-Build a safe, agent-friendly MCP toolkit for Kestrel warehouse operations across three sites:
+## 1. Purpose and scope
 
-- `LEEDS-01`
-- `READING-02`
-- `GLASGOW-03`
+Build an MCP toolkit that lets an agent answer stock and dock questions and raise
+exceptions for Kestrel warehouse staff at three sites: `LEEDS-01`, `READING-02`,
+`GLASGOW-03`. Staff are assigned to one site. The warehouse systems are stubbed over
+the supplied `stock_snapshot.csv` and `dock_schedule.jsonl`; the deliverable is the
+**interface**, not the backend.
 
-The toolkit will allow an AI agent to answer warehouse questions and perform approved operational actions using the supplied warehouse data as a stub backend.
+`data/tool_specification.md` is treated as a wish-list from people who know the job,
+not as a design. Section 3 lists every change from it and why.
 
-The design must not simply reproduce the Warehouse Ops wish-list. The supplied requirements are treated as business requirements, while this document defines the actual tool interface.
-
-The toolkit must support:
-
-- clear tool boundaries
-- schema-constrained inputs
-- safe handling of ambiguous requests
-- explicit confirmation for state-changing operations
-- server-enforced site scoping
-- actionable errors
-- agent-friendly tool descriptions
-- runtime use through a real MCP-compatible agent host, using Claude Code for the demonstration
-
-The case specifically requires the interface to be designed before implementation and the resulting Git history to show that sequence.
+The toolkit must be usable by an agent **from the tool descriptions, schemas and results
+alone**. Nothing in this design depends on a separate instructions file being loaded by
+the host; any such file is a convenience layered on top (see plan).
 
 ---
 
-## 2. Design Principles
+## 2. What the data says (design evidence)
 
-### 2.1 Design from the supplied data
+### 2.1 Stock (`stock_snapshot.csv`, 16 SKUs)
 
-The stock and dock data must be inspected before finalizing tool behaviour.
+| Site           | SKUs                                     | Same-site pairs that differ by one attribute                                                  |
+| -------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------- |
+| LEEDS-01 (7)   | 8801, 8802, 8803, 8804, 8811, 8815, 8816 | 8801/8802 (clear/black wrap), 8803/8804 (12mm/16mm band), 8815/8816 (standard UK/euro pallet) |
+| READING-02 (5) | 8805, 8806, 8807, 8812, 8813             | 8805/8806 (50mm/75mm corner protector), 8812/8813 (clear/printed tape)                        |
+| GLASGOW-03 (4) | 8808, 8809, 8810, 8814                   | 8808/8809 (400mm/600mm shrink film)                                                           |
 
-The lookup interface must not promise more than the stock data can support.
+- **12 of 16 SKUs have a same-site sibling** that differs by one word or number. Only
+  8807 (Edge board), 8814 (Label roll), 8810 (Void fill, paper) and 8811 (Void fill,
+  air pillow) are unique at their site. A single fuzzy `lookup` returning a "best match"
+  would confidently return the wrong product for 75% of the catalogue.
+- **Ambiguity depends on site.** "Void fill" matches two products globally but exactly
+  one at LEEDS-01 (8811) and one at GLASGOW-03 (8810). A design that always demands
+  disambiguation fails here; a design that never does fails on "pallet wrap".
+- **"Pallet" is a trap at LEEDS-01:** it matches both pallet wrap (8801, 8802) and
+  pallets (8815, 8816) — four candidates, two different kinds of product.
+- **Zero stock is real data.** SKU-8809 (Shrink film, 600mm) has quantity `0`; its
+  sibling SKU-8808 has 150. Returning `NOT_FOUND` for 8809, or dropping zero-stock rows
+  to "disambiguate", would make an agent answer "150" to a question about the 600mm film.
+- **SKUs are globally unique and each is held at exactly one site**, one bin each
+  (e.g. `A-12-3`, `YARD-1`). Bin prefixes are site-specific (`A-`/`YARD-` Leeds, `B-`
+  Reading, `C-` Glasgow). A SKU therefore identifies its site, which is what makes a
+  cross-site refusal decidable — and means `to_bin` on a move is also a cross-site vector.
 
-Where multiple products have similar descriptions, a name-based search must return candidates rather than silently selecting a best match.
+### 2.2 Docks (`dock_schedule.jsonl`, 18 slots, one date: 2026-04-08)
 
-### 2.2 Separate read-only and state-changing operations
+- Slots are a **closed set** of six two-hourly starts: `06:00 08:00 10:00 12:00 14:00 16:00`.
+- **The same slot time exists at all three sites.** "Book the 10:00" is a different
+  physical slot per site, so a slot is only meaningful inside a site scope.
+- 5 of 18 slots are booked. **Every booking is "Northbound Freight"**, and Leeds and
+  Reading each have _two_ (Leeds 08:00 & 12:00; Reading 06:00 & 14:00). "Cancel Northbound's
+  booking" is therefore ambiguous at two of three sites, so bookings are identified by
+  `date` + `slot`, never by carrier.
+- The file covers a single date. A `date` parameter must produce a useful error when
+  the date has no schedule.
 
-Read operations and state-changing operations are exposed as separate tools.
+### 2.3 Exceptions (no data file)
 
-This prevents an agent from treating a tool that can modify warehouse state as if it were only a lookup.
+There is no exceptions file: the store starts empty and only `raise_exception` creates
+records. `close_exception` needs an ID that the user, wearing gloves, will not remember
+or type. That is a gap in Ops' request (see `list_exceptions`, §3).
 
-### 2.3 Use schema constraints
+### 2.4 Ops' own notes
 
-Tool parameters must use explicit types and closed sets where applicable.
-
-Examples include:
-
-- site values
-- dock status
-- exception category
-- stock quantities
-- confirmation values
-
-Invalid values should be rejected by the schema before the operation is performed.
-
-### 2.4 Confirmation for state changes
-
-Any operation that changes warehouse state or affects operational records requires explicit confirmation.
-
-The tool must not perform the change when confirmation is absent.
-
-### 2.5 Enforce site scope in the toolkit
-
-The caller has an assigned site.
-
-The MCP server must enforce that site restriction.
-
-The agent or user must not be able to provide a different site value and use it to access another site's data.
-
-Valid sites are:
-
-- `LEEDS-01`
-- `READING-02`
-- `GLASGOW-03`
-
-### 2.6 Do not guess under uncertainty
-
-The agent should only receive a single stock result when the search produces one clear match.
-
-If multiple plausible products match the request, the search tool returns the candidates and the agent asks the user to clarify.
-
-The agent must not confidently choose one candidate merely because it is the closest textual match.
-
-### 2.7 Errors must be actionable
-
-Errors must explain:
-
-1. what failed
-2. why it failed
-3. which field or value caused the problem, where applicable
-4. what the agent should do next
-
-The error should allow the agent to correct its request without requiring the user to understand an internal error code.
+- "Don't make us type SKU codes" → description search must exist and must be safe.
+- "`ERR_4001`, we had to ring IT" → errors must let the agent self-correct.
+- "Stock corrections feed the month-end count" → corrections are the irreversible operation.
+- "Someone at Leeds could see Reading's numbers" → site scope enforced by the toolkit.
+- "Everything fast" → confirmation is spent only where it buys safety (§6).
 
 ---
 
-## 3. Trusted Caller Context
+## 3. Changes from Ops' request
 
-The toolkit uses trusted caller context containing:
+Ops asked for 5 tools. The toolkit has **10**: 4 read-only, 6 state-changing.
 
-```text
-caller_id
-assigned_site
-```
+| #   | Ops asked for                                        | Built                                                                                                                                                 | Why (evidence)                                                                                                                                                                                                               |
+| --- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `lookup` (SKU _or_ rough name, one tool)             | `get_stock` (exact SKU) + `search_stock` (description)                                                                                                | Two different promises. An exact SKU can be answered with certainty; a name cannot (§2.1: 12/16 SKUs have a same-site twin). One tool with a "best match" would return the wrong item silently.                              |
+| 2   | (inside `lookup`) returns "where it is and how many" | `search_stock` returns **all** candidates; quantities are **withheld** unless exactly one product matches                                             | If candidates carried quantities the agent could answer "420 pallet wrap" by adding 8801+8802 — a confident, wrong number for any purpose needing a variant. Identify first, then read.                                      |
+| 3   | `check_dock` (view + book + cancel)                  | `list_dock_slots` (read) + `book_dock_slot` + `cancel_dock_booking` (write)                                                                           | Reading and writing behind one name means the model can change state while "checking". Book and cancel also differ in reversibility (§6).                                                                                    |
+| 4   | `stock_change` ("same kind of thing really")         | `correct_stock` + `move_stock`                                                                                                                        | They are not the same. A correction changes the _total_ and feeds the month-end count (irreversible); a move preserves the total and is undone by a reverse move. Different parameters, failure modes and confirmation tier. |
+| 5   | `raise_exception` (category, few words, SKU)         | `raise_exception` with `category` as a closed enum (`damaged` \| `missing`) and `sku` optional                                                        | Ops named exactly two categories and three fields. Free-text category would be validated after the fact; SKU-less tickets are un-actionable.                                                                                 |
+| 6   | `close_exception`                                    | `close_exception`, **terminal** (no reopen tool)                                                                                                      | Ops asked for close but not its reverse. Position: closing is final and confirmed as irreversible; a wrongly closed ticket is answered by raising a new one. See "Deliberately not built".                                   |
+| 7   | (not requested)                                      | `list_exceptions` (read)                                                                                                                              | `close_exception` needs an ID. Without a listing tool the agent must invent one or ask a gloved user to type it, contradicting the "no typing codes" note.                                                                   |
+| 8   | "book one, cancel one"                               | `cancel_dock_booking` identifies the booking by `date` + `slot` and shows the carrier in the preview                                                  | §2.2: carrier cannot identify a booking at Leeds or Reading.                                                                                                                                                                 |
+| 9   | "shouldn't be possible" (cross-site)                 | No site _selector_ anywhere. Site comes from trusted session context; an optional `site` argument is an **assertion** that is verified, never trusted | §5.                                                                                                                                                                                                                          |
+| 10  | "tell us in a way that makes sense"                  | One structured error object with `code`, `message`, `field`, `details`, `suggested_action`, `example_call`                                            | §7.                                                                                                                                                                                                                          |
 
-`assigned_site` is supplied by the trusted application/agent-host context rather than being treated as a user-controlled authorization parameter.
-
-The valid site set is:
-
-```text
-LEEDS-01
-READING-02
-GLASGOW-03
-```
-
-Every tool that accesses site-specific warehouse data must apply the caller's assigned-site restriction.
-
-A user asking about another site must not be able to bypass this restriction by supplying a different site value.
-
----
-
-## 4. Tool Interface
-
-The toolkit exposes nine tools.
-
-### 4.1 `get_stock`
-
-**Purpose:** Retrieve stock information for an exact SKU.
+### Deliberately not built
 
 **Operation type:** Read-only.
 
@@ -143,12 +104,12 @@ sku: string
 
 ```json
 {
-	"type": "object",
-	"required": ["sku"],
-	"properties": {
-		"sku": {"type": "string", "minLength": 1}
-	},
-	"additionalProperties": false
+  "type": "object",
+  "required": ["sku"],
+  "properties": {
+    "sku": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
 }
 ```
 
@@ -166,7 +127,7 @@ sku: string
 
 ---
 
-### 4.2 `search_stock`
+## 4. Design principles
 
 **Purpose:** Search stock using a product description when the user does not know the SKU.
 
@@ -182,12 +143,12 @@ query: string
 
 ```json
 {
-	"type": "object",
-	"required": ["query"],
-	"properties": {
-		"query": {"type": "string", "minLength": 1}
-	},
-	"additionalProperties": false
+  "type": "object",
+  "required": ["query"],
+  "properties": {
+    "query": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
 }
 ```
 
@@ -216,22 +177,22 @@ If the search produces one clear candidate, Claude should answer directly withou
 
 ---
 
-### 4.3 `list_dock_slots`
+## 5. Trusted caller context and site scoping
 
-**Purpose:** View dock slots for the caller's assigned site.
-
-**Operation type:** Read-only.
-
-**Parameters:**
+The server is started with a **session context** it does not take from the model:
 
 ```text
-date: date
-status: "available" | "booked" | "all"
+KESTREL_CALLER_ID       e.g. "ops.leeds.01"
+KESTREL_ASSIGNED_SITE   one of LEEDS-01 | READING-02 | GLASGOW-03
 ```
 
-`status` defaults to `all`.
+- Supplied by whatever launches the server (in the stub: the `env` block of the agent-host
+  registration; in production: the terminal's authenticated session). The model cannot set it.
+- The server **refuses to start** if either value is missing or `ASSIGNED_SITE` is not in the closed set.
+- Every tool reads the site from this context. **No tool has a site selector.**
+- Every success result echoes `site`, so the agent and user always see which site the data is from.
 
-**Model-facing description:**
+### The optional `site` assertion
 
 > List dock slots for the caller's assigned site on a date. Use this read-only tool to inspect availability before booking or cancelling. The site is taken from trusted caller context; never ask the caller to supply it.
 
@@ -239,13 +200,17 @@ status: "available" | "booked" | "all"
 
 ```json
 {
-	"type": "object",
-	"required": ["date"],
-	"properties": {
-		"date": {"type": "string", "format": "date"},
-		"status": {"type": "string", "enum": ["available", "booked", "all"], "default": "all"}
-	},
-	"additionalProperties": false
+  "type": "object",
+  "required": ["date"],
+  "properties": {
+    "date": { "type": "string", "format": "date" },
+    "status": {
+      "type": "string",
+      "enum": ["available", "booked", "all"],
+      "default": "all"
+    }
+  },
+  "additionalProperties": false
 }
 ```
 
@@ -276,15 +241,18 @@ confirmation: literal true
 
 ```json
 {
-	"type": "object",
-	"required": ["date", "slot", "carrier", "confirmation"],
-	"properties": {
-		"date": {"type": "string", "format": "date"},
-		"slot": {"type": "string", "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"},
-		"carrier": {"type": "string", "minLength": 1},
-		"confirmation": {"const": true}
-	},
-	"additionalProperties": false
+  "type": "object",
+  "required": ["date", "slot", "carrier", "confirmation"],
+  "properties": {
+    "date": { "type": "string", "format": "date" },
+    "slot": {
+      "type": "string",
+      "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+    },
+    "carrier": { "type": "string", "minLength": 1 },
+    "confirmation": { "const": true }
+  },
+  "additionalProperties": false
 }
 ```
 
@@ -406,14 +374,14 @@ Every tool returns a JSON object. Successful calls contain `"ok": true` and an o
 
 ```json
 {
-	"ok": false,
-	"error": {
-		"code": "MACHINE_READABLE_CODE",
-		"message": "What failed and why, in plain language.",
-		"field": "field_name or null",
-		"details": {},
-		"suggested_action": "The next corrective action for the agent."
-	}
+  "ok": false,
+  "error": {
+    "code": "MACHINE_READABLE_CODE",
+    "message": "What failed and why, in plain language.",
+    "field": "field_name or null",
+    "details": {},
+    "suggested_action": "The next corrective action for the agent."
+  }
 }
 ```
 
@@ -451,7 +419,7 @@ Schema validation may reject a call before the tool runs. It must still identify
 
 ## 8. Runtime and Evidence Requirements
 
-The implementation must register all nine tools in a real MCP server and exercise them through an MCP-compatible host. Evidence must include:
+The implementation must register all ten tools in a real MCP server and exercise them through an MCP-compatible host. Evidence must include:
 
 - tool discovery and selection by the host
 - one unambiguous lookup answered without unnecessary clarification

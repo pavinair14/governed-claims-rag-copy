@@ -7,9 +7,11 @@ from .data_store import WarehouseDataStore
 
 from .errors import make_error
 
+from .state import WarehouseState
+
 
 def correct_stock(
-    store: WarehouseDataStore,
+    state: WarehouseState,
     context: CallerContext,
     sku: str,
     corrected_quantity: int,
@@ -95,7 +97,7 @@ def correct_stock(
 
 
 def move_stock(
-    store: WarehouseDataStore,
+    state: WarehouseState,
     context: CallerContext,
     sku: str,
     from_bin: str,
