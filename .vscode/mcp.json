@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "kestrel-warehouse": {
+      "type": "stdio",
+      "command": "D:/Project/governed-claims-rag-copy/.venv/Scripts/python.exe",
+      "args": ["-m", "warehouse_mcp.server"],
+      "env": {
+        "PYTHONPATH": "D:/Project/governed-claims-rag-copy/src",
+        "KESTREL_CALLER_ID": "ops.leeds.01",
+        "KESTREL_ASSIGNED_SITE": "LEEDS-01"
+      }
+    }
+  }
+}

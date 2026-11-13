@@ -1,4 +1,4 @@
 mcp
-pydantic
+pydantic>=2
 pytest
 pytest-asyncio

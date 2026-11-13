@@ -1,35 +1,31 @@
+import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 
+SITES = ("LEEDS-01", "READING-02", "GLASGOW-03")
 
-VALID_SITES = {
-    "LEEDS-01",
-    "READING-02",
-    "GLASGOW-03",
-}
+
+class StartupError(Exception):
+    """The server was launched without a valid caller context."""
 
 
 @dataclass(frozen=True)
-class CallerContext:
-    """Identity and warehouse-site scope for the current caller."""
-
+class SessionContext:
     caller_id: str
-    assigned_site: str
-
-    def __post_init__(self) -> None:
-        if self.assigned_site not in VALID_SITES:
-            raise ValueError(
-                f"Invalid assigned site: {self.assigned_site}"
-            )
+    site: str
 
 
-def require_site_access(
-    context: CallerContext,
-    requested_site: str,
-) -> None:
-    """Ensure the caller is allowed to access the requested site."""
+def load_context(env: Mapping[str, str] | None = None) -> SessionContext:
+    env = os.environ if env is None else env
 
-    if requested_site != context.assigned_site:
-        raise PermissionError(
-            f"Caller is assigned to {context.assigned_site} "
-            f"and cannot access {requested_site}."
+    caller_id = env.get("KESTREL_CALLER_ID", "").strip()
+    site = env.get("KESTREL_ASSIGNED_SITE", "").strip()
+
+    if not caller_id:
+        raise StartupError("KESTREL_CALLER_ID is missing or empty.")
+    if site not in SITES:
+        raise StartupError(
+            f"KESTREL_ASSIGNED_SITE must be one of {', '.join(SITES)}; got {site!r}."
         )
+
+    return SessionContext(caller_id=caller_id, site=site)

@@ -1,20 +1,19 @@
-# Warehouse Ops MCP Toolkit — Specification (Tool Interface Design)
-
+# Warehouse Ops MCP Toolkit: Specification (Tool Interface Design)
 
 ## 1. Purpose and scope
 
-Build an MCP toolkit that lets an agent answer stock and dock questions and raise
-exceptions for Kestrel warehouse staff at three sites: `LEEDS-01`, `READING-02`,
-`GLASGOW-03`. Staff are assigned to one site. The warehouse systems are stubbed over
-the supplied `stock_snapshot.csv` and `dock_schedule.jsonl`; the deliverable is the
+Build an MCP toolkit that lets an agent answer stock and dock questions and raise and
+close exceptions for Kestrel warehouse staff at three sites: `LEEDS-01`, `READING-02`,
+`GLASGOW-03`. Staff are assigned to one site. The warehouse systems are stubbed over the
+supplied `stock_snapshot.csv` and `dock_schedule.jsonl`; the deliverable is the
 **interface**, not the backend.
 
-`data/tool_specification.md` is treated as a wish-list from people who know the job,
-not as a design. Section 3 lists every change from it and why.
+`data/tool_specification.md` is treated as a wish-list from people who know the job, not
+as a design. Section 3 lists every change from it and why.
 
 The toolkit must be usable by an agent **from the tool descriptions, schemas and results
-alone**. Nothing in this design depends on a separate instructions file being loaded by
-the host; any such file is a convenience layered on top (see plan).
+alone**. Nothing here depends on a separate instructions file being loaded by the host;
+any such file is a convenience layered on top.
 
 ---
 
@@ -28,48 +27,46 @@ the host; any such file is a convenience layered on top (see plan).
 | READING-02 (5) | 8805, 8806, 8807, 8812, 8813             | 8805/8806 (50mm/75mm corner protector), 8812/8813 (clear/printed tape)                        |
 | GLASGOW-03 (4) | 8808, 8809, 8810, 8814                   | 8808/8809 (400mm/600mm shrink film)                                                           |
 
-- **12 of 16 SKUs have a same-site sibling** that differs by one word or number. Only
-  8807 (Edge board), 8814 (Label roll), 8810 (Void fill, paper) and 8811 (Void fill,
-  air pillow) are unique at their site. A single fuzzy `lookup` returning a "best match"
+- **12 of 16 SKUs have a same-site sibling** that differs by one word or number. Only 8807
+  (Edge board), 8814 (Label roll), 8810 (Void fill, paper) and 8811 (Void fill, air
+  pillow) are unique at their site. A single fuzzy `lookup` returning a "best match"
   would confidently return the wrong product for 75% of the catalogue.
-- **Ambiguity depends on site.** "Void fill" matches two products globally but exactly
-  one at LEEDS-01 (8811) and one at GLASGOW-03 (8810). A design that always demands
+- **Ambiguity depends on site.** "Void fill" matches two products globally but exactly one
+  at LEEDS-01 (8811) and one at GLASGOW-03 (8810). A design that always demands
   disambiguation fails here; a design that never does fails on "pallet wrap".
-- **"Pallet" is a trap at LEEDS-01:** it matches both pallet wrap (8801, 8802) and
-  pallets (8815, 8816) — four candidates, two different kinds of product.
-- **Zero stock is real data.** SKU-8809 (Shrink film, 600mm) has quantity `0`; its
-  sibling SKU-8808 has 150. Returning `NOT_FOUND` for 8809, or dropping zero-stock rows
-  to "disambiguate", would make an agent answer "150" to a question about the 600mm film.
-- **SKUs are globally unique and each is held at exactly one site**, one bin each
-  (e.g. `A-12-3`, `YARD-1`). Bin prefixes are site-specific (`A-`/`YARD-` Leeds, `B-`
-  Reading, `C-` Glasgow). A SKU therefore identifies its site, which is what makes a
-  cross-site refusal decidable — and means `to_bin` on a move is also a cross-site vector.
+- **"Pallet" is a trap at LEEDS-01:** it matches pallet wrap (8801, 8802) and pallets
+  (8815, 8816): four candidates across two kinds of product.
+- **Zero stock is real data.** SKU-8809 (Shrink film, 600mm) has quantity `0`; its sibling
+  SKU-8808 has 150. Returning `NOT_FOUND` for 8809, or dropping zero-stock rows to
+  "disambiguate", would make an agent answer "150" to a question about the 600mm film.
+- **SKUs are globally unique and each is held at exactly one site, in one bin.** Bin
+  prefixes are site-specific (`A-`/`YARD-` Leeds, `B-` Reading, `C-` Glasgow). A SKU
+  therefore identifies its site, which makes a cross-site refusal decidable, and means
+  `to_bin` on a move is also a cross-site vector.
 
 ### 2.2 Docks (`dock_schedule.jsonl`, 18 slots, one date: 2026-04-08)
 
 - Slots are a **closed set** of six two-hourly starts: `06:00 08:00 10:00 12:00 14:00 16:00`.
 - **The same slot time exists at all three sites.** "Book the 10:00" is a different
-  physical slot per site, so a slot is only meaningful inside a site scope.
-- 5 of 18 slots are booked. **Every booking is "Northbound Freight"**, and Leeds and
-  Reading each have _two_ (Leeds 08:00 & 12:00; Reading 06:00 & 14:00). "Cancel Northbound's
-  booking" is therefore ambiguous at two of three sites, so bookings are identified by
+  physical slot per site, so a slot only means something inside a site scope.
+- 5 of 18 slots are booked. **Every booking is "Northbound Freight"**, and Leeds
+  (08:00, 12:00) and Reading (06:00, 14:00) each have two. "Cancel Northbound's booking"
+  is therefore ambiguous at two of three sites, so bookings are identified by
   `date` + `slot`, never by carrier.
-- The file covers a single date. A `date` parameter must produce a useful error when
-  the date has no schedule.
+- The file covers a single date, so a `date` with no schedule needs a useful error.
 
 ### 2.3 Exceptions (no data file)
 
-There is no exceptions file: the store starts empty and only `raise_exception` creates
-records. `close_exception` needs an ID that the user, wearing gloves, will not remember
-or type. That is a gap in Ops' request (see `list_exceptions`, §3).
+The store starts empty and only `raise_exception` creates records. `close_exception`
+needs an ID that a gloved user will not remember or type. That is a gap in Ops' request.
 
 ### 2.4 Ops' own notes
 
-- "Don't make us type SKU codes" → description search must exist and must be safe.
-- "`ERR_4001`, we had to ring IT" → errors must let the agent self-correct.
-- "Stock corrections feed the month-end count" → corrections are the irreversible operation.
-- "Someone at Leeds could see Reading's numbers" → site scope enforced by the toolkit.
-- "Everything fast" → confirmation is spent only where it buys safety (§6).
+- "Don't make us type SKU codes" -> description search must exist and must be safe.
+- "`ERR_4001`, we had to ring IT" -> errors must let the agent self-correct.
+- "Stock corrections feed the month-end count" -> corrections are the irreversible operation.
+- "Someone at Leeds could see Reading's numbers" -> site scope enforced by the toolkit.
+- "Everything fast" -> confirmation costs one extra step; Section 7 explains why we accept it.
 
 ---
 
@@ -77,28 +74,48 @@ or type. That is a gap in Ops' request (see `list_exceptions`, §3).
 
 Ops asked for 5 tools. The toolkit has **10**: 4 read-only, 6 state-changing.
 
-| #   | Ops asked for                                        | Built                                                                                                                                                 | Why (evidence)                                                                                                                                                                                                               |
-| --- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `lookup` (SKU _or_ rough name, one tool)             | `get_stock` (exact SKU) + `search_stock` (description)                                                                                                | Two different promises. An exact SKU can be answered with certainty; a name cannot (§2.1: 12/16 SKUs have a same-site twin). One tool with a "best match" would return the wrong item silently.                              |
-| 2   | (inside `lookup`) returns "where it is and how many" | `search_stock` returns **all** candidates; quantities are **withheld** unless exactly one product matches                                             | If candidates carried quantities the agent could answer "420 pallet wrap" by adding 8801+8802 — a confident, wrong number for any purpose needing a variant. Identify first, then read.                                      |
-| 3   | `check_dock` (view + book + cancel)                  | `list_dock_slots` (read) + `book_dock_slot` + `cancel_dock_booking` (write)                                                                           | Reading and writing behind one name means the model can change state while "checking". Book and cancel also differ in reversibility (§6).                                                                                    |
-| 4   | `stock_change` ("same kind of thing really")         | `correct_stock` + `move_stock`                                                                                                                        | They are not the same. A correction changes the _total_ and feeds the month-end count (irreversible); a move preserves the total and is undone by a reverse move. Different parameters, failure modes and confirmation tier. |
-| 5   | `raise_exception` (category, few words, SKU)         | `raise_exception` with `category` as a closed enum (`damaged` \| `missing`) and `sku` optional                                                        | Ops named exactly two categories and three fields. Free-text category would be validated after the fact; SKU-less tickets are un-actionable.                                                                                 |
-| 6   | `close_exception`                                    | `close_exception`, **terminal** (no reopen tool)                                                                                                      | Ops asked for close but not its reverse. Position: closing is final and confirmed as irreversible; a wrongly closed ticket is answered by raising a new one. See "Deliberately not built".                                   |
-| 7   | (not requested)                                      | `list_exceptions` (read)                                                                                                                              | `close_exception` needs an ID. Without a listing tool the agent must invent one or ask a gloved user to type it, contradicting the "no typing codes" note.                                                                   |
-| 8   | "book one, cancel one"                               | `cancel_dock_booking` identifies the booking by `date` + `slot` and shows the carrier in the preview                                                  | §2.2: carrier cannot identify a booking at Leeds or Reading.                                                                                                                                                                 |
-| 9   | "shouldn't be possible" (cross-site)                 | No site _selector_ anywhere. Site comes from trusted session context; an optional `site` argument is an **assertion** that is verified, never trusted | §5.                                                                                                                                                                                                                          |
-| 10  | "tell us in a way that makes sense"                  | One structured error object with `code`, `message`, `field`, `details`, `suggested_action`, `example_call`                                            | §7.                                                                                                                                                                                                                          |
+| #   | Ops asked for                                        | Built                                                                                  | Why (evidence)                                                                                                                                                                                                                       |
+| --- | ---------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | `lookup` (SKU _or_ rough name, one tool)             | `get_stock` (exact SKU) + `search_stock` (description)                                 | Two different promises. An exact SKU can be answered with certainty; a name cannot (2.1: 12/16 SKUs have a same-site twin). One tool with a "best match" would return the wrong item silently.                                       |
+| 2   | (inside `lookup`) returns "where it is and how many" | `search_stock` returns **all** candidates; quantities withheld unless exactly one match | If ambiguous candidates carried quantities, the agent could answer "420 pallet wrap" by adding 8801+8802: a confident wrong number for any task needing a variant. Identify first, then read with `get_stock`.                        |
+| 3   | `check_dock` (view + book + cancel)                  | `list_dock_slots` (read) + `book_dock_slot` + `cancel_dock_booking` (write)            | Reading and writing behind one name lets the model change state while "checking". Book and cancel also differ in reversibility.                                                                                                      |
+| 4   | `stock_change` ("same kind of thing really")         | `correct_stock` + `move_stock`                                                         | Not the same. A correction changes the _total_ and feeds the month-end count; a move preserves the total and is undone by a reverse move. Different parameters, failure modes and consequences.                                      |
+| 5   | `raise_exception` (category, few words, SKU)         | `raise_exception` with `category` enum (`damaged` \| `missing`) and `sku` **required** | Ops named exactly two categories and three fields. A free-text category would be validated after the fact. Ops said the ticket relates to "which SKU", and a ticket without one is un-actionable. Staff find it with `search_stock`. |
+| 6   | `close_exception`                                    | `close_exception`, **terminal** (no reopen tool)                                       | Ops asked for close but not its reverse. Position: closing is final and is confirmed as such; a wrongly closed ticket is answered by raising a new one (Section 8).                                                                  |
+| 7   | (not requested)                                      | `list_exceptions` (read)                                                               | `close_exception` needs an ID. Without a listing tool the agent must invent one or ask a gloved user to type it, contradicting the "no typing codes" note.                                                                           |
+| 8   | "book one, cancel one"                               | Bookings identified by `date` + `slot`; the preview shows the carrier                  | 2.2: carrier cannot identify a booking at Leeds or Reading.                                                                                                                                                                          |
+| 9   | "shouldn't be possible" (cross-site)                 | **No `site` parameter on any tool.** Site comes from server config (Section 5)         | A site parameter would have to be trusted or verified. A parameter that does not exist cannot be misused.                                                                                                                            |
+| 10  | "tell us in a way that makes sense"                  | One structured error object with a corrected example call                              | Section 6.                                                                                                                                                                                                                           |
+| 11  | "everything fast"                                    | Confirmation on all 6 state-changing tools, as a two-step preview/commit               | Section 7. Each write is operational state (see Section 7 for per-tool reasons).                                                                                                                                                     |
 
-### Deliberately not built
+---
 
-**Operation type:** Read-only.
+## 4. Tool interface
 
-**Parameters:**
+### 4.0 Conventions that apply to every tool
 
-```text
-sku: string
-```
+- **Read-only vs state-changing is visible in the interface.** Every tool sets MCP
+  annotations (`readOnlyHint: true` for the four reads, `false` for the six writes;
+  `destructiveHint: true` for `cancel_dock_booking`, `correct_stock` and
+  `close_exception`) **and** every description starts with `READ-ONLY.` or
+  `CHANGES STATE.`
+- **No tool has a `site` parameter.** The site comes from trusted server context
+  (Section 5). Every success result echoes `site`.
+- **Closed value sets are enums in the schema:** `slot`, `status`, `category`.
+- **All schemas set `additionalProperties: false`.**
+- **Write tools use a two-step flow** (Section 7). They accept an optional
+  `confirmation_token`. A first call without a token never changes state.
+
+### 4.1 `get_stock`
+
+**Operation type:** read-only.
+
+**Model-facing description:**
+
+> READ-ONLY. Get stock for one exact SKU (format SKU-1234) at the caller's own site:
+> description, each bin location with quantity, and total. Use when the user gives a
+> SKU, or after search_stock identified one product. A quantity of 0 is a valid result,
+> not an error. Do not guess SKUs; for descriptions use search_stock.
 
 **Schema:**
 
@@ -107,37 +124,44 @@ sku: string
   "type": "object",
   "required": ["sku"],
   "properties": {
-    "sku": { "type": "string", "minLength": 1 }
+    "sku": { "type": "string", "pattern": "^SKU-[0-9]{4}$" }
   },
   "additionalProperties": false
 }
 ```
 
-**Model-facing description:**
+**Success result:**
 
-> Retrieve stock information for an exact SKU at the caller's assigned warehouse site. Use this tool when the user provides a specific SKU. Do not use it for approximate product-name searches.
+```json
+{
+  "ok": true,
+  "site": "LEEDS-01",
+  "sku": "SKU-8801",
+  "description": "Pallet wrap, 500mm clear",
+  "unit": "each",
+  "locations": [{ "bin": "A-12-3", "quantity": 240 }],
+  "total_quantity": 240
+}
+```
 
 **Rules:**
 
-- The SKU must be a string.
-- The result must be restricted to the caller's assigned site.
-- A valid record with quantity `0` is still a valid stock result.
-- An unknown SKU returns `NOT_FOUND`.
-- The tool must not modify stock.
+- Unknown SKU -> `NOT_FOUND`.
+- SKU exists at another site (e.g. SKU-8805 requested from Leeds) -> `SITE_ACCESS_DENIED`.
+  The error names no site, bin or quantity. It only says the item is not stocked here.
+- Quantity `0` returns `ok: true` with `total_quantity: 0`.
 
----
+### 4.2 `search_stock`
 
-## 4. Design principles
+**Operation type:** read-only.
 
-**Purpose:** Search stock using a product description when the user does not know the SKU.
+**Model-facing description:**
 
-**Operation type:** Read-only.
-
-**Parameters:**
-
-```text
-query: string
-```
+> READ-ONLY. Search products at the caller's own site by description when the user
+> does not know the SKU. Returns ALL plausible matches. If match_status is "single",
+> the one product is returned with its quantity; answer directly. If it is "multiple",
+> quantities are withheld: do NOT pick one; list the candidates and ask the user which
+> they mean, then call get_stock with the chosen SKU. Never invent a SKU.
 
 **Schema:**
 
@@ -146,55 +170,69 @@ query: string
   "type": "object",
   "required": ["query"],
   "properties": {
-    "query": { "type": "string", "minLength": 1 }
+    "query": { "type": "string", "minLength": 2, "maxLength": 80 }
   },
   "additionalProperties": false
 }
 ```
 
-**Model-facing description:**
+**Matching rule:** case-insensitive; the query is split into words (a trailing "s" is
+ignored, so "wraps" matches "wrap"); a product matches when **every** word appears in
+its description. Only the caller's site is searched.
 
-> Search products at the caller's assigned warehouse site using the product description provided by the user. Return all plausible matching candidates. If more than one candidate is plausible, do not choose one; present the candidates so the user can clarify.
+**Success result, one match:**
+
+```json
+{
+  "ok": true,
+  "site": "READING-02",
+  "match_status": "single",
+  "matches": [
+    {
+      "sku": "SKU-8807",
+      "description": "Edge board, 1200mm",
+      "unit": "each",
+      "locations": [{ "bin": "B-05-2", "quantity": 340 }],
+      "total_quantity": 340
+    }
+  ]
+}
+```
+
+**Success result, several matches (quantities and bins withheld):**
+
+```json
+{
+  "ok": true,
+  "site": "LEEDS-01",
+  "match_status": "multiple",
+  "matches": [
+    { "sku": "SKU-8801", "description": "Pallet wrap, 500mm clear" },
+    { "sku": "SKU-8802", "description": "Pallet wrap, 500mm black" }
+  ],
+  "next_step": "Ask the user which product they mean, then call get_stock with that SKU."
+}
+```
 
 **Rules:**
 
-- Search only the caller's assigned site.
-- Do not silently select a best match when multiple plausible products exist.
-- Return a single result when there is one clear match.
-- Return multiple candidates when the request is ambiguous.
-- Return `NOT_FOUND` when no candidate exists.
-- The tool must not modify stock.
+- Zero matches -> `NOT_FOUND` with a suggestion to try fewer or different words.
+- Never returns another site's products. A search for "edge board" at Leeds is
+  `NOT_FOUND` and does not hint that Reading stocks it (a description is not an
+  identifier, unlike a SKU in `get_stock`).
+- A zero-stock product still counts as a match (SKU-8809 appears and is not dropped).
+- Worked cases at LEEDS-01: "pallet wrap" -> 2 (multiple); "pallet" -> 4 (multiple);
+  "void fill" -> 1 (single, 8811); "strapping 12" -> 1 (single, 8803).
 
-**Expected agent behaviour:**
+### 4.3 `list_dock_slots`
 
-If the user asks:
+**Operation type:** read-only.
 
-> How many pallet wraps do we have?
+**Model-facing description:**
 
-and the data contains multiple plausible pallet-wrap products, Claude should present the candidates and ask which product the user means.
-
-If the search produces one clear candidate, Claude should answer directly without unnecessary clarification.
-
----
-
-## 5. Trusted caller context and site scoping
-
-The server is started with a **session context** it does not take from the model:
-
-```text
-KESTREL_CALLER_ID       e.g. "ops.leeds.01"
-KESTREL_ASSIGNED_SITE   one of LEEDS-01 | READING-02 | GLASGOW-03
-```
-
-- Supplied by whatever launches the server (in the stub: the `env` block of the agent-host
-  registration; in production: the terminal's authenticated session). The model cannot set it.
-- The server **refuses to start** if either value is missing or `ASSIGNED_SITE` is not in the closed set.
-- Every tool reads the site from this context. **No tool has a site selector.**
-- Every success result echoes `site`, so the agent and user always see which site the data is from.
-
-### The optional `site` assertion
-
-> List dock slots for the caller's assigned site on a date. Use this read-only tool to inspect availability before booking or cancelling. The site is taken from trusted caller context; never ask the caller to supply it.
+> READ-ONLY. List dock slots at the caller's own site for one date, optionally filtered
+> by status. Use to answer "what's free" and before booking or cancelling. Booked
+> slots show their carrier. Never ask the user for a site.
 
 **Schema:**
 
@@ -214,163 +252,253 @@ KESTREL_ASSIGNED_SITE   one of LEEDS-01 | READING-02 | GLASGOW-03
 }
 ```
 
-**Result:** `ok: true`, the trusted site, ISO date, matching slots, and `slot_count`.
+**Success result:** `ok`, `site`, `date`, `slots` (each `{slot, status, carrier}`),
+`slot_count`. A date with no schedule -> `NOT_FOUND` with
+`details.scheduled_dates` listing the dates that do have one.
 
----
+### 4.4 `list_exceptions`
 
-### 4.4 `book_dock_slot`
-
-**Purpose:** Book one currently available dock slot.
-
-**Operation type:** State-changing; explicit confirmation required.
-
-**Parameters:**
-
-```text
-date: date
-slot: string (HH:MM)
-carrier: non-empty string
-confirmation: literal true
-```
+**Operation type:** read-only.
 
 **Model-facing description:**
 
-> Book one available dock slot for the caller's assigned site. Use only after the user has confirmed the exact date, time, and carrier. This changes the dock schedule. The site is taken from trusted caller context.
+> READ-ONLY. List exceptions raised at the caller's own site. Use to find an
+> exception ID before closing one; never ask the user to type or remember an ID.
+> Defaults to open exceptions.
 
 **Schema:**
 
 ```json
 {
   "type": "object",
-  "required": ["date", "slot", "carrier", "confirmation"],
   "properties": {
-    "date": { "type": "string", "format": "date" },
-    "slot": {
+    "status": {
       "type": "string",
-      "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
-    },
-    "carrier": { "type": "string", "minLength": 1 },
-    "confirmation": { "const": true }
+      "enum": ["open", "closed", "all"],
+      "default": "open"
+    }
   },
   "additionalProperties": false
 }
 ```
 
-The server checks that the slot exists at the assigned site and is available before updating it. An already-booked slot returns `SLOT_ALREADY_BOOKED`.
+**Success result:** `ok`, `site`, `exceptions` (each `{exception_id, category, sku,
+description, status, raised_at, resolution_note}`), `exception_count`. An empty list is
+a valid result, not an error.
 
----
+### 4.5 `book_dock_slot`
 
-### 4.5 `cancel_dock_booking`
-
-**Purpose:** Cancel one existing dock booking.
-
-**Operation type:** State-changing; explicit confirmation required.
-
-**Parameters:** `date: date`, `slot: string (HH:MM)`, `confirmation: literal true`.
+**Operation type:** state-changing. Reversible (by `cancel_dock_booking`). Confirmation required.
 
 **Model-facing description:**
 
-> Cancel an existing dock booking for the caller's assigned site. Use only after the user has confirmed the exact date and time. This changes the dock schedule. The site is taken from trusted caller context.
+> CHANGES STATE (requires confirmation). Book one available dock slot at the caller's
+> own site. First call without confirmation_token returns a preview; show it to the
+> user and only after they agree call again with the same arguments plus the returned
+> confirmation_token. Never invent a slot; check list_dock_slots first.
 
-The schema is an object with required `date`, `slot`, and `confirmation`, the same date and slot constraints as `book_dock_slot`, and `confirmation` constrained to `true`. The server makes the slot available only after all validation succeeds.
+**Schema:**
 
----
-
-### 4.6 `correct_stock`
-
-**Purpose:** Replace the recorded quantity after a physical count correction.
-
-**Operation type:** State-changing and ledger-affecting; explicit confirmation required.
-
-**Parameters:**
-
-```text
-sku: non-empty string
-corrected_quantity: integer >= 0
-reason: non-empty string
-confirmation: literal true
+```json
+{
+  "type": "object",
+  "required": ["date", "slot", "carrier"],
+  "properties": {
+    "date": { "type": "string", "format": "date" },
+    "slot": {
+      "type": "string",
+      "enum": ["06:00", "08:00", "10:00", "12:00", "14:00", "16:00"]
+    },
+    "carrier": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "confirmation_token": { "type": "string" }
+  },
+  "additionalProperties": false
+}
 ```
 
+**Rules:** slot already booked -> `SLOT_ALREADY_BOOKED` (returned at preview time, so
+the user is never asked to confirm a booking that would fail); date with no schedule ->
+`NOT_FOUND`.
+
+### 4.6 `cancel_dock_booking`
+
+**Operation type:** state-changing. Confirmation required. Treated as destructive: the
+carrier may already be on its way, and the freed slot can be taken by someone else.
+
 **Model-facing description:**
 
-> Correct the recorded quantity for an exact SKU at the caller's assigned site after a physical count. This affects month-end stock records, so require confirmation of the SKU, new quantity, and reason. Do not use it to represent a bin movement.
+> CHANGES STATE (requires confirmation). Cancel an existing dock booking at the
+> caller's own site, identified by date and slot (never by carrier). First call returns
+> a preview that names the carrier; confirm with the user, then repeat with the
+> returned confirmation_token.
 
-The schema requires these four fields, rejects additional fields, constrains `corrected_quantity` to a non-negative integer, and constrains `confirmation` to `true`. The server verifies that the SKU belongs to the assigned site before applying the correction.
+**Schema:** `date` (format date), `slot` (the same six-value enum),
+`confirmation_token` (optional string). Required: `date`, `slot`.
+`additionalProperties: false`.
 
----
+**Rules:** slot exists but is not booked -> `SLOT_NOT_BOOKED`.
 
-### 4.7 `move_stock`
+### 4.7 `correct_stock`
 
-**Purpose:** Record a physical movement between two bins at the assigned site.
+**Operation type:** state-changing, **ledger-affecting**. Confirmation required.
+Treated as destructive: the old figure is overwritten and the correction feeds the
+month-end count.
 
-**Operation type:** State-changing; explicit confirmation required.
+**Model-facing description:**
 
-**Parameters:**
+> CHANGES STATE (requires confirmation). Correct the recorded quantity of one SKU in
+> one bin at the caller's own site after a physical count. Feeds the month-end count.
+> The preview shows old quantity, new quantity and difference; confirm all three with
+> the user. Do NOT use this to record moving stock between bins: use move_stock.
 
-```text
-sku: non-empty string
-from_bin: non-empty string
-to_bin: non-empty string
-quantity: integer > 0
-confirmation: literal true
+**Schema:**
+
+```json
+{
+  "type": "object",
+  "required": ["sku", "bin", "corrected_quantity", "reason"],
+  "properties": {
+    "sku": { "type": "string", "pattern": "^SKU-[0-9]{4}$" },
+    "bin": { "type": "string", "minLength": 1, "maxLength": 20 },
+    "corrected_quantity": { "type": "integer", "minimum": 0 },
+    "reason": { "type": "string", "minLength": 3, "maxLength": 300 },
+    "confirmation_token": { "type": "string" }
+  },
+  "additionalProperties": false
+}
 ```
 
+**Rules:** the SKU must be held at the caller's site (`SITE_ACCESS_DENIED` otherwise,
+`NOT_FOUND` if unknown); the bin must hold that SKU (`NOT_FOUND` with the bins that do).
+`bin` is required because after a partial move a SKU can sit in more than one bin and a
+count is taken per bin; the agent gets the bins from `get_stock`.
+
+### 4.8 `move_stock`
+
+**Operation type:** state-changing. Confirmation required. Total quantity is unchanged;
+a move is undone by a reverse move.
+
 **Model-facing description:**
 
-> Record a physical movement of an exact SKU between two different bins at the caller's assigned site. Confirm the SKU, source bin, destination bin, and quantity first. Do not move more than the source bin contains.
+> CHANGES STATE (requires confirmation). Record moving a quantity of one SKU from one
+> bin to another bin at the caller's own site. Total stock does not change. Confirm
+> SKU, source bin, destination bin and quantity with the user. Do not use to fix a wrong
+> count: use correct_stock.
 
-The schema uses non-empty strings, `quantity` minimum `1`, and `confirmation: true`. The server verifies site ownership, distinct bins, source existence, and available quantity before applying the movement.
+**Schema:**
 
----
-
-### 4.8 `raise_exception`
-
-**Purpose:** Create a damaged or missing stock exception.
-
-**Operation type:** State-changing operational record; explicit confirmation required.
-
-**Parameters:**
-
-```text
-category: "damaged" | "missing"
-description: non-empty string
-sku: non-empty string | null (optional)
-confirmation: literal true
+```json
+{
+  "type": "object",
+  "required": ["sku", "from_bin", "to_bin", "quantity"],
+  "properties": {
+    "sku": { "type": "string", "pattern": "^SKU-[0-9]{4}$" },
+    "from_bin": { "type": "string", "minLength": 1, "maxLength": 20 },
+    "to_bin": { "type": "string", "minLength": 1, "maxLength": 20 },
+    "quantity": { "type": "integer", "minimum": 1 },
+    "confirmation_token": { "type": "string" }
+  },
+  "additionalProperties": false
+}
 ```
 
+**Rules:** `from_bin` must hold the SKU; `quantity` above what it holds ->
+`INSUFFICIENT_STOCK` (with `available` and `requested`); `from_bin` equal to `to_bin` ->
+`INVALID_ARGUMENT`; a `to_bin` whose prefix belongs to another site -> `SITE_ACCESS_DENIED`;
+a malformed `to_bin` -> `INVALID_ARGUMENT`. A partial move leaves the remainder in
+`from_bin` and creates or increases the quantity in `to_bin`.
+
+### 4.9 `raise_exception`
+
+**Operation type:** state-changing. Confirmation required.
+
 **Model-facing description:**
 
-> Raise a damaged or missing stock exception at the caller's assigned site. Use only after the user confirms the category and description, and validate an optional SKU against that site. Do not invent an exception or SKU.
+> CHANGES STATE (requires confirmation). Raise a damaged or missing-stock exception
+> for one SKU at the caller's own site. Category must be "damaged" or "missing".
+> Returns a server-generated exception ID. Confirm category, SKU and description with
+> the user first. If the user has no SKU, use search_stock to find it.
 
-The category is a closed enum and `confirmation` is constrained to `true`. If `sku` is supplied, it must belong to the assigned site. The result includes a server-generated exception ID.
+**Schema:**
 
----
-
-### 4.9 `close_exception`
-
-**Purpose:** Close an existing exception with a resolution note.
-
-**Operation type:** State-changing operational record; explicit confirmation required.
-
-**Parameters:**
-
-```text
-exception_id: non-empty string
-resolution_note: non-empty string
-confirmation: literal true
+```json
+{
+  "type": "object",
+  "required": ["category", "sku", "description"],
+  "properties": {
+    "category": { "type": "string", "enum": ["damaged", "missing"] },
+    "sku": { "type": "string", "pattern": "^SKU-[0-9]{4}$" },
+    "description": { "type": "string", "minLength": 3, "maxLength": 500 },
+    "confirmation_token": { "type": "string" }
+  },
+  "additionalProperties": false
+}
 ```
 
+**Rules:** SKU must be held at the caller's site (`SITE_ACCESS_DENIED` / `NOT_FOUND`).
+IDs have the form `EX-001`, generated by the server.
+
+### 4.10 `close_exception`
+
+**Operation type:** state-changing, **terminal**. Confirmation required. Treated as
+destructive because there is no reopen tool.
+
 **Model-facing description:**
 
-> Close an open exception belonging to the caller's assigned site. Require confirmation of the exception ID and resolution note. Do not close an unknown or already-closed exception.
+> CHANGES STATE (requires confirmation). Close an open exception at the caller's own
+> site with a resolution note. Closing is final; there is no reopen. Use list_exceptions
+> to get the ID; never invent one. Confirm the ID and note with the user first.
 
-The schema requires the three fields, rejects empty strings and additional fields, and constrains `confirmation` to `true`. The server checks existence, site ownership, and open status before closing it; a second close returns `ALREADY_CLOSED`.
+**Schema:**
+
+```json
+{
+  "type": "object",
+  "required": ["exception_id", "resolution_note"],
+  "properties": {
+    "exception_id": { "type": "string", "pattern": "^EX-[0-9]{3,}$" },
+    "resolution_note": { "type": "string", "minLength": 3, "maxLength": 500 },
+    "confirmation_token": { "type": "string" }
+  },
+  "additionalProperties": false
+}
+```
+
+**Rules:** unknown ID -> `NOT_FOUND`; exception at another site -> `SITE_ACCESS_DENIED`;
+already closed -> `ALREADY_CLOSED` (do not retry).
 
 ---
 
-## 5. Common Response and Error Contract
+## 5. Trusted caller context and site scoping
 
-Every tool returns a JSON object. Successful calls contain `"ok": true` and an operation-specific result. Failed calls contain exactly this actionable shape:
+The server is started with a **session context** that does not come from the model:
+
+```text
+KESTREL_CALLER_ID       e.g. "ops.leeds.01"
+KESTREL_ASSIGNED_SITE   one of LEEDS-01 | READING-02 | GLASGOW-03
+```
+
+- Supplied by whatever launches the server (in the stub: the `env` block of the
+  agent-host registration; in production: the terminal's authenticated session).
+- The server **refuses to start** if either value is missing or `KESTREL_ASSIGNED_SITE`
+  is not in the closed set.
+- Every tool reads the site from this context. No tool accepts a site.
+- Every record read or written is filtered by that site **inside the server**. Where the
+  caller names an identifier that exists at another site (SKU, `to_bin`, exception ID),
+  the answer is `SITE_ACCESS_DENIED`, which discloses no quantity, bin, carrier,
+  schedule or site name. Where the caller only describes something (`search_stock`), the
+  other site's records are simply not searched.
+
+**Why `SITE_ACCESS_DENIED` rather than `NOT_FOUND` for a cross-site identifier:**
+`NOT_FOUND` would be a false statement ("check the code for typos" when the code is
+correct) and would send the agent down the wrong recovery path. The denial confirms only
+that the identifier exists elsewhere. Accepted cost: that fact is revealed.
+
+---
+
+## 6. Response and error contract
+
+Every tool returns a JSON object. Success: `"ok": true` plus a result. Failure:
 
 ```json
 {
@@ -380,54 +508,113 @@ Every tool returns a JSON object. Successful calls contain `"ok": true` and an o
     "message": "What failed and why, in plain language.",
     "field": "field_name or null",
     "details": {},
-    "suggested_action": "The next corrective action for the agent."
+    "suggested_action": "The next corrective step for the agent.",
+    "example_call": { "tool": "tool_name", "arguments": {} }
   }
 }
 ```
 
-The minimum codes are:
+`example_call` is a corrected call where one can be built (omitted otherwise).
 
-- `INVALID_ARGUMENT`: value or required business input is invalid; include the field and allowed values or constraints.
-- `NOT_FOUND`: the requested SKU, slot, or exception is not available within the caller's scope.
-- `SITE_ACCESS_DENIED`: an identified record belongs to another site; do not reveal that site's quantity, bin, carrier, or schedule details.
-- `CONFIRMATION_REQUIRED`: no state change occurred; return the exact proposed action so the agent can ask for confirmation.
-- `SLOT_ALREADY_BOOKED`: booking was not changed; choose another available slot.
-- `INSUFFICIENT_STOCK`: movement was not applied; include available and requested quantities.
-- `ALREADY_CLOSED`: the exception was not changed; do not retry closure.
+| Code                    | Meaning and what the error must contain                                                                 |
+| ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| `INVALID_ARGUMENT`      | A value is missing, malformed or out of range. Names the `field`, the constraint or allowed values, and gives an `example_call`. |
+| `NOT_FOUND`             | No such SKU, slot, date, bin or exception within the caller's scope. Lists what does exist where safe (e.g. `scheduled_dates`). |
+| `SITE_ACCESS_DENIED`    | An identified record belongs to another site. Reveals none of its data. Hard boundary: do not retry.    |
+| `CONFIRMATION_REQUIRED` | No change made. `details.proposed_action` and `details.confirmation_token` are included.                |
+| `CONFIRMATION_INVALID`  | Token expired, already used, or issued for different arguments. No change made. Call without a token to get a fresh preview. |
+| `SLOT_ALREADY_BOOKED`   | Booking not changed. Lists nearby `available` slots in `details`.                                       |
+| `SLOT_NOT_BOOKED`       | Cancellation target is not booked. Nothing to cancel.                                                   |
+| `INSUFFICIENT_STOCK`    | Move not applied. `details` has `available` and `requested`.                                            |
+| `ALREADY_CLOSED`        | Exception was not changed. Do not retry.                                                                |
 
-Schema validation may reject a call before the tool runs. It must still identify the invalid field and permitted shape where the MCP host exposes validation errors.
+**Schema rejections** use the same shape. The server catches validation failures and
+returns `INVALID_ARGUMENT` with the offending `field`, the permitted values or pattern,
+and an `example_call`, rather than the host's default validation text.
 
-## 6. Safety and State Rules
+---
 
-1. Trusted caller context, not a tool argument, supplies `caller_id` and `assigned_site`.
-2. Every stock, dock, and exception read or write is filtered by `assigned_site` inside the server.
-3. Read-only tools never mutate state.
-4. No state-changing operation occurs unless the request passes schema validation, business validation, and explicit confirmation.
-5. Confirmation is for the specific proposed operation; a previous confirmation cannot be reused for a different operation.
-6. State changes are applied atomically after validation. The in-memory test backend must make the result visible to a subsequent read in the same server session.
-7. The server must not claim a change succeeded until the state layer has applied it.
-8. Ambiguous description searches return all plausible candidates. The agent asks a focused clarification question rather than selecting a best match.
+## 7. Confirmation and state rules
 
-## 7. Decisions Against the Ops Wish-list
+### 7.1 Two-step confirmation on all six write tools
 
-- The requested `lookup` is split into `get_stock` and `search_stock` because exact SKU lookup and uncertain description search need different safety behavior. The stock file contains near-identical variants such as clear and black pallet wrap.
-- The requested `check_dock` is split into `list_dock_slots`, `book_dock_slot`, and `cancel_dock_booking` so inspection cannot accidentally be treated as a write.
-- The requested `stock_change` is split into `correct_stock` and `move_stock` because a count correction affects the month-end record while a movement changes bin location and available stock.
-- All writes require confirmation because dock bookings, stock corrections, movements, and exception records are operational state, and the requirements explicitly note that stock corrections feed month-end count.
-- Site is deliberately absent from every public tool parameter. The data contains three sites and the requirements describe staff as site-assigned; accepting a user-controlled site would make the access boundary advisory.
-- Search returns candidates instead of one fuzzy winner because the supplied descriptions contain meaningful variants and the requirements explicitly make uncertainty the toolkit's responsibility.
+1. **Preview call.** The agent calls the tool without `confirmation_token`. The server
+   runs full schema **and** business validation, changes nothing, and returns
+   `CONFIRMATION_REQUIRED` with `details.proposed_action` (human-readable, e.g. "Cancel
+   the 12:00 dock booking on 2026-04-08 at LEEDS-01 held by Northbound Freight") and a
+   `confirmation_token`.
+2. **Commit call.** After the user agrees, the agent repeats the call with identical
+   arguments plus the token. The server applies the change.
 
-## 8. Runtime and Evidence Requirements
+The token is single-use, expires after 5 minutes, and is bound to the caller, the tool
+and the exact arguments. Reusing it for any other operation returns
+`CONFIRMATION_INVALID`.
 
-The implementation must register all ten tools in a real MCP server and exercise them through an MCP-compatible host. Evidence must include:
+Validating at preview time means the user is never asked to confirm something that
+would fail (e.g. booking a taken slot).
+
+**What this does and does not guarantee.** The server cannot see the human. The token
+guarantees that the action committed is exactly the one previewed, and that no write
+can happen in a single blind call. The human decision itself rests on the agent showing
+the preview, plus the host's own tool-approval prompt. The token is not a substitute
+for either.
+
+### 7.2 Why all six, and what it costs
+
+| Tool                  | Reason for confirmation                                                          |
+| --------------------- | -------------------------------------------------------------------------------- |
+| `correct_stock`       | Overwrites a figure that feeds the month-end count.                              |
+| `move_stock`          | Changes bin records; a wrong move misdirects the next picker.                    |
+| `cancel_dock_booking` | The carrier may already be en route; the slot can be taken by someone else.      |
+| `close_exception`     | Ops never asked for a reopen, so closing is final.                               |
+| `book_dock_slot`      | Reversible, but a wrong booking blocks a real slot; kept uniform for simplicity. |
+| `raise_exception`     | Reversible only by raising and closing noise; kept uniform for simplicity.       |
+
+**Cost:** one extra round-trip per write on a forklift terminal. Accepted: a wrong
+correction or cancellation costs far more than one extra tap, and a single uniform rule
+is harder for an agent to get wrong than a per-tool exception list.
+
+### 7.3 State rules
+
+1. Trusted context, not a tool argument, supplies the caller and site.
+2. Read-only tools never mutate state.
+3. A state change happens only after schema validation, business validation and a valid
+   confirmation token.
+4. Changes are applied atomically. The in-memory test backend makes them visible to a
+   subsequent read in the same server session.
+5. The server never reports success before the state layer has applied the change.
+6. Ambiguous searches return all plausible candidates; the agent asks, never picks.
+
+---
+
+## 8. Deliberately not built
+
+- **No `reopen_exception`.** Ops asked for close only. A reopen would need rules about
+  who may do it and what happens to the resolution note. Position: closing is terminal;
+  a wrongly closed ticket is answered by raising a new exception. This is stated in the
+  `close_exception` description so the agent warns the user.
+- **No site selector** on any tool (Section 5).
+- **No cross-site stock transfer.** Not requested, and it would be a cross-site vector.
+  `move_stock` is bin-to-bin within the caller's site only.
+- **No bulk operations and no edit or delete of exceptions.** Not requested; each would
+  widen the blast radius of a single call.
+- **No "best match" lookup.** Rejected in Section 3, row 1.
+
+## 9. Evidence and runtime requirements
+
+The implementation must register all ten tools in a real MCP server and exercise them
+through an MCP-compatible host (Claude Code). Evidence must include:
 
 - tool discovery and selection by the host
-- one unambiguous lookup answered without unnecessary clarification
-- one ambiguous lookup followed by a clarification question
-- confirmation refusal followed by a confirmed state change
-- same-site success and cross-site refusal
-- schema rejection and an actionable business error
-- passing `pytest-asyncio` output
-- the host registration/configuration used for the demonstration
+- one unambiguous lookup answered without unnecessary clarification (e.g. "void fill" at Leeds)
+- one ambiguous lookup followed by a clarification question (e.g. "pallet wrap")
+- a zero-stock answer for SKU-8809 at Glasgow, reported as zero rather than not found
+- a preview followed by a confirmed state change, and a commit attempt with a wrong token
+- same-site success and cross-site refusal (e.g. SKU-8805 from Leeds)
+- schema rejection and an actionable business error (e.g. booking a booked slot)
+- passing `pytest-asyncio` output covering invocation, schema rejection, site scoping,
+  confirmation and error shape
+- the host registration config used for the demonstration
 
-The first four Git commits must be distinct and ordered as `01-spec`, `02-plan`, `03-tasks`, and `04-implement`; no source file may appear before `04-implement`.
+The first four Git commits must be distinct and ordered `01-spec`, `02-plan`,
+`03-tasks`, `04-implement`; no source file may appear before `04-implement`.
