@@ -1,0 +1,3 @@
+2026-11-14 19:23:47,704 tool=search_stock step=read outcome=ok args={"query": "black pallet wrap"}
+2026-11-14 19:24:08,424 tool=correct_stock step=preview outcome=CONFIRMATION_REQUIRED args={"sku": "SKU-8802", "bin": "A-12-4", "corrected_quantity": 175, "reason": "recount after the delivery"}
+2026-11-14 19:24:16,854 tool=correct_stock step=commit outcome=ok args={"sku": "SKU-8802", "bin": "A-12-4", "corrected_quantity": 175, "reason": "recount after the delivery"}

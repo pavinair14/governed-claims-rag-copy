@@ -7,7 +7,8 @@
       "env": {
         "PYTHONPATH": "D:/Project/governed-claims-rag-copy/src",
         "KESTREL_CALLER_ID": "ops.leeds.01",
-        "KESTREL_ASSIGNED_SITE": "LEEDS-01"
+        "KESTREL_ASSIGNED_SITE": "LEEDS-01",
+        "KESTREL_AUDIT_LOG": "D:/Project/governed-claims-rag-copy/evidence/server_log.txt"
       }
     }
   }

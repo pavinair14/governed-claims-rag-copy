@@ -1,0 +1,9 @@
+2026-11-14 19:33:30,362 tool=search_stock step=read outcome=NOT_FOUND args={"query": "black pallet wrap rolls"}
+2026-11-14 19:33:34,962 tool=search_stock step=read outcome=ok args={"query": "pallet wrap"}
+2026-11-14 19:34:05,165 tool=raise_exception step=preview outcome=CONFIRMATION_REQUIRED args={"category": "damaged", "sku": "SKU-8802", "description": "The black pallet wrap rolls are damaged; the outer layer is torn."}
+2026-11-14 19:34:16,857 tool=raise_exception step=commit outcome=ok args={"category": "damaged", "sku": "SKU-8802", "description": "The black pallet wrap rolls are damaged; the outer layer is torn."}
+2026-11-14 19:34:37,471 tool=list_exceptions step=read outcome=ok args={"status": "open"}
+2026-11-14 19:34:53,662 tool=list_exceptions step=read outcome=ok args={"status": "open"}
+2026-11-14 19:35:03,244 tool=close_exception step=preview outcome=CONFIRMATION_REQUIRED args={"exception_id": "EX-001", "resolution_note": "we replaced the rolls"}
+2026-11-14 19:35:12,671 tool=close_exception step=commit outcome=ok args={"exception_id": "EX-001", "resolution_note": "we replaced the rolls"}
+2026-11-14 19:35:20,273 tool=list_exceptions step=read outcome=ok args={"status": "all"}

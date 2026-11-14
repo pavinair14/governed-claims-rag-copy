@@ -1,4 +1,4 @@
-﻿============================= test session starts =============================
+============================= test session starts =============================
 platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0 -- D:\Project\governed-claims-rag-copy\.venv\Scripts\python.exe
 cachedir: .pytest_cache
 rootdir: D:\Project\governed-claims-rag-copy
@@ -274,3 +274,30 @@ tests/test_server_write_tools.py::test_exception_lifecycle_raise_list_close PASS
 tests/test_server_write_tools.py::test_a_new_session_starts_from_clean_state PASSED [ 90%]
 tests/test_server_write_tools.py::test_a_site_argument_is_rejected_by_every_write_tool[book_dock_slot-args0] PASSED [ 91%]
 tests/test_server_write_tools.py::test_a_site_argument_is_rejected_by_every_write_tool[cancel_dock_booking-args1] PASSED [ 91%]
+tests/test_server_write_tools.py::test_a_site_argument_is_rejected_by_every_write_tool[correct_stock-args2] PASSED [ 91%]
+tests/test_server_write_tools.py::test_a_site_argument_is_rejected_by_every_write_tool[move_stock-args3] PASSED [ 92%]
+tests/test_server_write_tools.py::test_a_site_argument_is_rejected_by_every_write_tool[raise_exception-args4] PASSED [ 92%]
+tests/test_server_write_tools.py::test_a_site_argument_is_rejected_by_every_write_tool[close_exception-args5] PASSED [ 92%]
+tests/test_server_write_tools.py::test_other_sites_stock_is_refused_by_the_write_tools[correct_stock-args0] PASSED [ 93%]
+tests/test_server_write_tools.py::test_other_sites_stock_is_refused_by_the_write_tools[move_stock-args1] PASSED [ 93%]
+tests/test_server_write_tools.py::test_other_sites_stock_is_refused_by_the_write_tools[raise_exception-args2] PASSED [ 93%]
+tests/test_server_write_tools.py::test_same_site_writes_work_in_the_same_session_as_cross_site_refusals PASSED [ 94%]
+tests/test_server_write_tools.py::test_bad_enum_values_return_our_error_shape PASSED [ 94%]
+tests/test_store.py::test_stock_loaded PASSED                            [ 94%]
+tests/test_store.py::test_zero_stock_is_a_real_row PASSED                [ 95%]
+tests/test_store.py::test_docks_loaded PASSED                            [ 95%]
+tests/test_store.py::test_exceptions_start_empty PASSED                  [ 95%]
+tests/test_store.py::test_each_load_is_independent PASSED                [ 96%]
+tests/test_validate.py::test_bad_slot_lists_the_allowed_values_and_an_example PASSED [ 96%]
+tests/test_validate.py::test_site_argument_gets_its_own_explanation PASSED [ 96%]
+tests/test_validate.py::test_missing_required_parameter PASSED           [ 97%]
+tests/test_validate.py::test_bad_sku_format_shows_the_pattern PASSED     [ 97%]
+tests/test_validate.py::test_bad_category_lists_the_two_allowed_values PASSED [ 97%]
+tests/test_validate.py::test_quantity_as_text_and_below_minimum_are_rejected PASSED [ 98%]
+tests/test_validate.py::test_bad_date_asks_for_iso_format PASSED         [ 98%]
+tests/test_validate.py::test_every_problem_is_listed_not_just_the_first PASSED [ 98%]
+tests/test_validate.py::test_valid_input_returns_the_model PASSED        [ 99%]
+tests/test_validate.py::test_missing_arguments_use_defaults PASSED       [ 99%]
+tests/test_validate.py::test_envelope_is_valid_json_with_the_full_shape PASSED [100%]
+
+============================ 291 passed in 40.07s =============================

@@ -42,8 +42,7 @@ def search_stock(scope: Scope, args: SearchStockInput) -> dict[str, Any]:
             field="query",
             details={"query": args.query},
             suggested_action=(
-                "Try fewer or different words (every word must appear in the "
-                "description), or ask the user for the SKU."
+                "Try fewer or different words. Every word must appear in the description, so drop generic words (such as 'rolls' or 'boxes') first and keep distinguishing words such as colour or size. If that still finds nothing, ask the user for the SKU."
             ),
             example_call={
                 "tool": "search_stock",
